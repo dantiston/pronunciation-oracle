@@ -53,7 +53,7 @@ pronunciation-oracle ingest pokemon_ep01.mp4 --subtitles pokemon_ep01.srt --corp
 pronunciation-oracle ingest-dir ./pokemon_season1 --corpus corpus.db
 
 # Find every "pikachu" and clip it out:
-pronunciation-oracle search pikachu --corpus corpus.db --out clips/ --pad 0.15
+pronunciation-oracle search pikachu --corpus corpus.db --out clips/ --pad 0.3
 
 # Phrases work too -- matched as consecutive spoken words in one file:
 pronunciation-oracle search "I choose you" --corpus corpus.db --out clips/
@@ -89,7 +89,7 @@ with Corpus("corpus.db") as corpus:
     corpus.add_transcript(transcript)
     hits = corpus.search("pikachu")
 
-extract_clips(hits, "clips/", pad=0.15)
+extract_clips(hits, "clips/")
 ```
 
 ## Architecture / extension points

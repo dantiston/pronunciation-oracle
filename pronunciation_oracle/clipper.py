@@ -52,11 +52,18 @@ class ClipResult:
 def extract_clips(
     hits: list[SearchHit],
     output_dir: str | Path,
-    pad: float = 0.15,
+    pad: float = 0.3,
     fmt: str = "wav",
     write_manifest: bool = True,
 ) -> list[ClipResult]:
     """Cut one audio clip per search hit into `output_dir`, padded by `pad` seconds.
+
+    The default of 0.3s (rather than a hair-trigger 0.0-0.1s) exists because a
+    single spoken word is typically only 0.3-0.6s long; ASR word-boundary
+    timestamps are accurate on average but noisy by up to ~100-150ms in either
+    direction, and trailing consonants (e.g. a word-final "-chu") need room to
+    fully decay -- too little padding reads as the clip being cut off early
+    even when the underlying start/end timestamps are correct.
 
     Clips are named `<word>/<source-stem>_<start_ms>-<end_ms>.<fmt>`, deduplicated
     if two hits would collide. A manifest.json/.csv listing every clip's source

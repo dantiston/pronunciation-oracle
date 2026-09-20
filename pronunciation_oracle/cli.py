@@ -250,7 +250,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_search.add_argument(
         "--out", default=None, help="directory to write clips into (omit to just list hits)"
     )
-    p_search.add_argument("--pad", type=float, default=0.15, help="seconds of padding around each clip")
+    p_search.add_argument("--pad", type=float, default=0.3, help="seconds of padding around each clip")
     p_search.add_argument("--format", choices=["wav", "mp3", "flac"], default="wav")
     p_search.add_argument(
         "--contains",

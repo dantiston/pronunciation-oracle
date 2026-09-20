@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from pronunciation_oracle.audio import ffprobe_duration
 from pronunciation_oracle.clipper import extract_clips
 from pronunciation_oracle.corpus import SearchHit
@@ -77,3 +79,12 @@ def test_extract_clips_groups_punctuation_variants_into_one_folder(tmp_path, ton
     word_dirs = {Path(r.output_path).parent for r in results}
     assert word_dirs == {out_dir / "pikachu"}
     assert len(list((out_dir / "pikachu").glob("*.wav"))) == 4
+
+
+def test_extract_clips_default_pad_is_generous(tmp_path, tone_wav):
+    # Regression guard: 0.15s was too tight and made real clips of short (0.3-0.6s)
+    # spoken words sound cut off, even though the underlying timestamps were correct.
+    hit = SearchHit(str(tone_wav), "pikachu", 1.0, 1.4, 0.9, "", "")
+    (result,) = extract_clips([hit], tmp_path / "clips")
+    assert result.clip_start == pytest.approx(0.7)
+    assert result.clip_end == pytest.approx(1.7)
