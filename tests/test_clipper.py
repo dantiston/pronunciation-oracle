@@ -9,12 +9,22 @@ from pronunciation_oracle.corpus import SearchHit
 def test_extract_clips_creates_files_and_manifest(tmp_path, tone_wav):
     hits = [
         SearchHit(
-            file_path=str(tone_wav), word="pikachu", start=1.0, end=1.3,
-            confidence=0.9, context_before="hey", context_after="use",
+            file_path=str(tone_wav),
+            word="pikachu",
+            start=1.0,
+            end=1.3,
+            confidence=0.9,
+            context_before="hey",
+            context_after="use",
         ),
         SearchHit(
-            file_path=str(tone_wav), word="pikachu", start=2.0, end=2.3,
-            confidence=0.8, context_before="go", context_after="now",
+            file_path=str(tone_wav),
+            word="pikachu",
+            start=2.0,
+            end=2.3,
+            confidence=0.8,
+            context_before="go",
+            context_after="now",
         ),
     ]
     out_dir = tmp_path / "clips"

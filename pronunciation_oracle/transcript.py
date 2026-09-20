@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import Any
 
 
 @dataclass
@@ -29,9 +30,11 @@ class Transcript:
 
     @property
     def text(self) -> str:
+        """The transcript's full text, as its words joined by spaces."""
         return " ".join(w.word for w in self.words)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize to a JSON-compatible dict (see `from_dict` for the inverse)."""
         return {
             "source_path": self.source_path,
             "duration": self.duration,
@@ -41,7 +44,8 @@ class Transcript:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "Transcript":
+    def from_dict(cls, data: dict[str, Any]) -> Transcript:
+        """Build a Transcript from a dict produced by `to_dict`."""
         return cls(
             source_path=data["source_path"],
             duration=data["duration"],
@@ -51,8 +55,10 @@ class Transcript:
         )
 
     def save(self, path: str | Path) -> None:
+        """Write this transcript as JSON to `path`."""
         Path(path).write_text(json.dumps(self.to_dict(), indent=2, ensure_ascii=False), encoding="utf-8")
 
     @classmethod
-    def load(cls, path: str | Path) -> "Transcript":
+    def load(cls, path: str | Path) -> Transcript:
+        """Load a transcript previously written by `save`."""
         return cls.from_dict(json.loads(Path(path).read_text(encoding="utf-8")))

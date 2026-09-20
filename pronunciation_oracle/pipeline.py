@@ -1,10 +1,10 @@
 """Orchestrates step (1) of the system: media in, time-aligned Transcript out.
 
-    audio/video --ffmpeg--> 16kHz mono wav --ASR--> word timestamps
-                                                        |
-                        (optional) subtitle file --parse--> reference text
-                                                        |
-                                                     Aligner --> Transcript
+audio/video --ffmpeg--> 16kHz mono wav --ASR--> word timestamps
+                                                    |
+                    (optional) subtitle file --parse--> reference text
+                                                    |
+                                                 Aligner --> Transcript
 """
 
 from __future__ import annotations
@@ -49,7 +49,9 @@ def transcribe_and_align(
         if subtitles_path is not None:
             lines = parse_subtitles(subtitles_path)
             reference = [ReferenceSegment(text=line.text, start=line.start, end=line.end) for line in lines]
-            words = aligner.align(asr_result.words, reference, audio_duration=duration, audio_path=str(wav_path))
+            words = aligner.align(
+                asr_result.words, reference, audio_duration=duration, audio_path=str(wav_path)
+            )
             text_origin = "subtitles"
         else:
             words = asr_result.words

@@ -1,3 +1,5 @@
+from itertools import pairwise
+
 from pronunciation_oracle.align.base import ReferenceSegment
 from pronunciation_oracle.align.sequence_aligner import SequenceAligner
 from pronunciation_oracle.transcript import WordTiming
@@ -69,7 +71,7 @@ def test_falls_back_to_audio_duration_when_nothing_matches():
     assert result[0].start >= 0.0
     assert result[-1].end <= 6.0
     # Monotonic non-decreasing timeline.
-    for a, b in zip(result, result[1:]):
+    for a, b in pairwise(result):
         assert a.end <= b.start + 1e-9
 
 

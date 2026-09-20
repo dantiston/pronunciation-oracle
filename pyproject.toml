@@ -9,13 +9,12 @@ description = "Transcribe and align media files, then search a corpus for every 
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
-dependencies = []
+dependencies = ["faster-whisper>=1.0.0"]
 
 [project.optional-dependencies]
-asr = ["faster-whisper>=1.0.0"]
 align-ctc = ["torch>=2.1", "torchaudio>=2.1"]
-dev = ["pytest>=7.4"]
-all = ["faster-whisper>=1.0.0", "torch>=2.1", "torchaudio>=2.1"]
+dev = ["pytest>=7.4", "ruff>=0.16", "ty>=0.0.80"]
+all = ["torch>=2.1", "torchaudio>=2.1"]
 
 [project.scripts]
 pronunciation-oracle = "pronunciation_oracle.cli:main"
@@ -25,3 +24,37 @@ include = ["pronunciation_oracle*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "I",    # isort
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "BLE",  # flake8-blind-except
+    "PL",   # pylint
+    "RUF",  # ruff-specific
+    "D100", # missing docstring in public module
+    "D101", # missing docstring in public class
+    "D102", # missing docstring in public method
+    "D103", # missing docstring in public function
+    "D104", # missing docstring in public package
+    "D417", # missing argument description in a docstring
+]
+ignore = [
+    "PLR0913", # too many arguments -- config-heavy constructors (e.g. FasterWhisperASR) are fine
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = [
+    "D",       # test functions are self-documenting via their names
+    "PLR2004", # comparisons against literal expected values are the point of a test
+]

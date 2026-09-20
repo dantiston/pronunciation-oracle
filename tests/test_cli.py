@@ -1,4 +1,5 @@
 import json
+import shutil
 
 from pronunciation_oracle.cli import main
 from pronunciation_oracle.corpus import Corpus
@@ -20,12 +21,18 @@ def test_ingest_and_search_end_to_end(tmp_path, tone_wav, capsys):
     corpus_path = tmp_path / "corpus.db"
     fake_words = _fake_words_json(tmp_path)
 
-    rc = main([
-        "ingest", str(tone_wav),
-        "--corpus", str(corpus_path),
-        "--asr-backend", "fake",
-        "--fake-words-json", str(fake_words),
-    ])
+    rc = main(
+        [
+            "ingest",
+            str(tone_wav),
+            "--corpus",
+            str(corpus_path),
+            "--asr-backend",
+            "fake",
+            "--fake-words-json",
+            str(fake_words),
+        ]
+    )
     assert rc == 0
     out = capsys.readouterr().out
     assert "Ingested" in out
@@ -36,11 +43,16 @@ def test_ingest_and_search_end_to_end(tmp_path, tone_wav, capsys):
         assert corpus.stats().num_words == 4
 
     out_dir = tmp_path / "clips"
-    rc = main([
-        "search", "pikachu",
-        "--corpus", str(corpus_path),
-        "--out", str(out_dir),
-    ])
+    rc = main(
+        [
+            "search",
+            "pikachu",
+            "--corpus",
+            str(corpus_path),
+            "--out",
+            str(out_dir),
+        ]
+    )
     assert rc == 0
     out = capsys.readouterr().out
     assert "Found 1 instance" in out
@@ -55,20 +67,31 @@ def test_ingest_and_search_end_to_end(tmp_path, tone_wav, capsys):
 def test_search_phrase_end_to_end(tmp_path, tone_wav, capsys):
     corpus_path = tmp_path / "corpus.db"
     fake_words = _fake_words_json(tmp_path)
-    main([
-        "ingest", str(tone_wav),
-        "--corpus", str(corpus_path),
-        "--asr-backend", "fake",
-        "--fake-words-json", str(fake_words),
-    ])
+    main(
+        [
+            "ingest",
+            str(tone_wav),
+            "--corpus",
+            str(corpus_path),
+            "--asr-backend",
+            "fake",
+            "--fake-words-json",
+            str(fake_words),
+        ]
+    )
     capsys.readouterr()
 
     out_dir = tmp_path / "phrase_clips"
-    rc = main([
-        "search", "use thunderbolt",
-        "--corpus", str(corpus_path),
-        "--out", str(out_dir),
-    ])
+    rc = main(
+        [
+            "search",
+            "use thunderbolt",
+            "--corpus",
+            str(corpus_path),
+            "--out",
+            str(out_dir),
+        ]
+    )
     assert rc == 0
     out = capsys.readouterr().out
     assert "Found 1 instance" in out
@@ -84,12 +107,18 @@ def test_search_phrase_end_to_end(tmp_path, tone_wav, capsys):
 def test_search_no_matches(tmp_path, tone_wav, capsys):
     corpus_path = tmp_path / "corpus.db"
     fake_words = _fake_words_json(tmp_path)
-    main([
-        "ingest", str(tone_wav),
-        "--corpus", str(corpus_path),
-        "--asr-backend", "fake",
-        "--fake-words-json", str(fake_words),
-    ])
+    main(
+        [
+            "ingest",
+            str(tone_wav),
+            "--corpus",
+            str(corpus_path),
+            "--asr-backend",
+            "fake",
+            "--fake-words-json",
+            str(fake_words),
+        ]
+    )
     capsys.readouterr()
 
     rc = main(["search", "squirtle", "--corpus", str(corpus_path)])
@@ -100,12 +129,18 @@ def test_search_no_matches(tmp_path, tone_wav, capsys):
 def test_stats_command(tmp_path, tone_wav, capsys):
     corpus_path = tmp_path / "corpus.db"
     fake_words = _fake_words_json(tmp_path)
-    main([
-        "ingest", str(tone_wav),
-        "--corpus", str(corpus_path),
-        "--asr-backend", "fake",
-        "--fake-words-json", str(fake_words),
-    ])
+    main(
+        [
+            "ingest",
+            str(tone_wav),
+            "--corpus",
+            str(corpus_path),
+            "--asr-backend",
+            "fake",
+            "--fake-words-json",
+            str(fake_words),
+        ]
+    )
     capsys.readouterr()
 
     rc = main(["stats", "--corpus", str(corpus_path), "--verbose"])
@@ -118,19 +153,23 @@ def test_stats_command(tmp_path, tone_wav, capsys):
 def test_ingest_dir(tmp_path, tone_wav, capsys):
     media_dir = tmp_path / "media"
     media_dir.mkdir()
-    import shutil
-
     shutil.copy(tone_wav, media_dir / "ep01.wav")
     shutil.copy(tone_wav, media_dir / "ep02.wav")
     fake_words = _fake_words_json(tmp_path)
     corpus_path = tmp_path / "corpus.db"
 
-    rc = main([
-        "ingest-dir", str(media_dir),
-        "--corpus", str(corpus_path),
-        "--asr-backend", "fake",
-        "--fake-words-json", str(fake_words),
-    ])
+    rc = main(
+        [
+            "ingest-dir",
+            str(media_dir),
+            "--corpus",
+            str(corpus_path),
+            "--asr-backend",
+            "fake",
+            "--fake-words-json",
+            str(fake_words),
+        ]
+    )
     assert rc == 0
     with Corpus(corpus_path) as corpus:
         assert corpus.stats().num_files == 2

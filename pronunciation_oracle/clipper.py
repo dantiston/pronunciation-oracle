@@ -35,6 +35,8 @@ def _group_key(word: str) -> str:
 
 @dataclass
 class ClipResult:
+    """One extracted clip: its source, exact word/phrase span, and padded clip span."""
+
     word: str
     source_path: str
     word_start: float
@@ -115,7 +117,9 @@ def extract_clips(
 
 def _write_manifest(output_dir: Path, results: list[ClipResult]) -> None:
     rows = [asdict(r) for r in results]
-    (output_dir / "manifest.json").write_text(json.dumps(rows, indent=2, ensure_ascii=False), encoding="utf-8")
+    (output_dir / "manifest.json").write_text(
+        json.dumps(rows, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
     with (output_dir / "manifest.csv").open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
         writer.writeheader()

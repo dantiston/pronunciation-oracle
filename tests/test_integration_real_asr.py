@@ -25,6 +25,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+from itertools import pairwise
 
 import pytest
 
@@ -133,7 +134,7 @@ def test_real_alignment_against_mismatched_subtitles(tmp_path, speech_wav, asr_m
     assert [normalize_word(w.word) for w in words].count("pikachu") == 3
 
     # Whole-transcript timeline must stay ordered and inside the audio.
-    for a, b in zip(words, words[1:]):
+    for a, b in pairwise(words):
         assert a.start <= a.end
         assert a.start <= b.start
     assert words[-1].end <= transcript.duration + 0.5
@@ -153,7 +154,8 @@ def test_search_and_clip_then_reverify_by_reasr(tmp_path, speech_wav, asr_model)
 
     assert len(hits) >= 2
     for hit in hits:
-        print(f"[hit] {hit.start:.2f}-{hit.end:.2f}s  ...{hit.context_before} [{hit.word}] {hit.context_after}...")
+        ctx = f"...{hit.context_before} [{hit.word}] {hit.context_after}..."
+        print(f"[hit] {hit.start:.2f}-{hit.end:.2f}s  {ctx}")
 
     clips_dir = tmp_path / "clips"
     results = extract_clips(hits, clips_dir, pad=0.2, fmt="wav")
@@ -169,4 +171,6 @@ def test_search_and_clip_then_reverify_by_reasr(tmp_path, speech_wav, asr_model)
         print(f"[reverify] {clip.output_path} -> {clip_result.text!r}")
         if "pikachu" in clip_norm_words:
             reheard += 1
-    assert reheard >= len(results) - 1, "most extracted clips should still be recognized as 'pikachu' in isolation"
+    assert reheard >= len(results) - 1, (
+        "most extracted clips should still be recognized as 'pikachu' in isolation"
+    )

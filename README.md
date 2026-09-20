@@ -36,11 +36,11 @@ media/*.mp4,*.srt  --[1] transcribe_and_align-->  Transcript (per file)
 ## Install
 
 ```bash
-pip install -e ".[asr]"       # faster-whisper backend (default, CPU-friendly)
-# or: pip install -e ".[all]" # + optional torchaudio CTC forced aligner
+pip install -e .                     # faster-whisper is a base dependency (CPU-friendly, no GPU needed)
+# or: pip install -e ".[align-ctc]"  # + optional torchaudio CTC forced aligner
 ```
 
-Requires `ffmpeg`/`ffprobe` on PATH (`apt-get install ffmpeg`).
+Requires `ffmpeg`/`ffprobe` on PATH (`brew install ffmpeg` / `apt-get install ffmpeg`).
 
 ## CLI
 

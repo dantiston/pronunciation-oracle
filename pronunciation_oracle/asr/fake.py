@@ -13,6 +13,12 @@ from .base import ASRBackend, ASRResult
 
 
 class FakeASR(ASRBackend):
+    """Returns a fixed, caller-supplied ASRResult regardless of the input audio.
+
+    Construct with either `result=` (a full ASRResult) or `words=` (a word list,
+    wrapped into an ASRResult automatically); passing both is an error.
+    """
+
     def __init__(self, result: ASRResult | None = None, words: list[WordTiming] | None = None):
         if result is not None and words is not None:
             raise ValueError("pass either result= or words=, not both")
@@ -24,4 +30,5 @@ class FakeASR(ASRBackend):
             self._result = ASRResult(text="", words=[], language="en")
 
     def transcribe(self, audio_path: str | Path, language: str | None = None) -> ASRResult:
+        """Ignore `audio_path`/`language` and return the canned ASRResult."""
         return self._result

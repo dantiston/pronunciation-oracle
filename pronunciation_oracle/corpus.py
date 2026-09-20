@@ -44,6 +44,8 @@ CREATE INDEX IF NOT EXISTS idx_words_file_id ON words(file_id, word_index);
 
 @dataclass
 class SearchHit:
+    """One occurrence of a searched word/phrase: where, when, and how confidently."""
+
     file_path: str
     word: str
     start: float
@@ -55,6 +57,8 @@ class SearchHit:
 
 @dataclass
 class FileRow:
+    """Summary of one ingested file, as returned by `Corpus.files()`."""
+
     id: int
     path: str
     duration: float
@@ -65,13 +69,18 @@ class FileRow:
 
 @dataclass
 class CorpusStats:
+    """Aggregate corpus size, as returned by `Corpus.stats()`."""
+
     num_files: int
     num_words: int
     total_duration: float
 
 
 class Corpus:
+    """A SQLite-backed index of every word spoken in every ingested file."""
+
     def __init__(self, db_path: str | Path):
+        """Open (creating if needed) the corpus database at `db_path`."""
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(self.db_path)
@@ -80,20 +89,31 @@ class Corpus:
         self._conn.commit()
 
     def close(self) -> None:
+        """Close the underlying database connection."""
         self._conn.close()
 
-    def __enter__(self) -> "Corpus":
+    def __enter__(self) -> Corpus:
         return self
 
     def __exit__(self, *exc_info) -> None:
         self.close()
 
     def add_transcript(self, transcript: Transcript, replace: bool = True) -> int:
-        """Ingest a Transcript's words into the corpus, keyed by source_path."""
+        """Ingest a Transcript's words into the corpus, keyed by source_path.
+
+        Args:
+            transcript: The time-aligned transcript to index.
+            replace: If a file at `transcript.source_path` is already in the
+                corpus, replace its words with these instead of raising.
+
+        Returns:
+            The corpus-internal file id for `transcript.source_path`.
+
+        Raises:
+            ValueError: If the path is already ingested and `replace=False`.
+        """
         cur = self._conn.cursor()
-        existing = cur.execute(
-            "SELECT id FROM files WHERE path = ?", (transcript.source_path,)
-        ).fetchone()
+        existing = cur.execute("SELECT id FROM files WHERE path = ?", (transcript.source_path,)).fetchone()
         if existing is not None:
             if not replace:
                 raise ValueError(f"{transcript.source_path} is already in the corpus (replace=False)")
@@ -111,7 +131,8 @@ class Corpus:
             )
         else:
             cur.execute(
-                "INSERT INTO files (path, duration, language, text_origin, ingested_at) VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO files (path, duration, language, text_origin, ingested_at) "
+                "VALUES (?, ?, ?, ?, ?)",
                 (
                     transcript.source_path,
                     transcript.duration,
@@ -121,6 +142,8 @@ class Corpus:
                 ),
             )
             file_id = cur.lastrowid
+            if file_id is None:
+                raise RuntimeError(f"INSERT into files did not produce a rowid for {transcript.source_path}")
 
         cur.executemany(
             "INSERT INTO words (file_id, word_index, word, norm_word, start, end, confidence) "
@@ -134,6 +157,7 @@ class Corpus:
         return file_id
 
     def remove_file(self, path: str) -> None:
+        """Delete a file and all of its indexed words from the corpus."""
         self._conn.execute("DELETE FROM files WHERE path = ?", (str(path),))
         self._conn.commit()
 
@@ -150,6 +174,16 @@ class Corpus:
         A multi-word query must appear as consecutive words in a single file;
         each token is matched the same way a single-word query would be
         (`contains`/`min_confidence` apply per token).
+
+        Args:
+            query: A word, or a whole phrase (quoted words matched in order).
+            contains: Substring match instead of exact match.
+            min_confidence: Drop hits below this ASR word-confidence.
+            context_words: How many words of context to include on each side.
+            limit: Cap the number of hits returned.
+
+        Returns:
+            Every matching occurrence, ordered by file path then start time.
         """
         tokens = [t for t in (normalize_word(tok) for tok in tokenize(query)) if t]
         if not tokens:
@@ -238,7 +272,7 @@ class Corpus:
                 continue  # phrase would run past the end of the file
             if not all(
                 (tok in norm_word) if contains else (tok == norm_word)
-                for tok, (_idx, _word, norm_word, _s, _e, _c) in zip(tokens, span)
+                for tok, (_idx, _word, norm_word, _s, _e, _c) in zip(tokens, span, strict=True)
             ):
                 continue
             confidences = [c for *_rest, c in span if c is not None]
@@ -265,8 +299,11 @@ class Corpus:
     def _context(
         self, cur: sqlite3.Cursor, file_id: int, before_index: int, after_index: int, n: int
     ) -> tuple[str, str]:
-        """Words surrounding a match, `n` on each side. before/after_index bound the
-        match itself (equal for a single word; first/last word_index for a phrase)."""
+        """Return the `n` words on each side of a match.
+
+        `before_index`/`after_index` bound the match itself: equal for a
+        single word, or the first/last word_index for a phrase.
+        """
         if n <= 0:
             return "", ""
         before_rows = cur.execute(
@@ -280,6 +317,7 @@ class Corpus:
         return " ".join(r[0] for r in before_rows), " ".join(r[0] for r in after_rows)
 
     def files(self) -> list[FileRow]:
+        """List every ingested file with its word count, ordered by path."""
         rows = self._conn.execute(
             "SELECT f.id, f.path, f.duration, f.language, f.text_origin, COUNT(w.id) "
             "FROM files f LEFT JOIN words w ON w.file_id = f.id "
@@ -288,6 +326,7 @@ class Corpus:
         return [FileRow(*row) for row in rows]
 
     def stats(self) -> CorpusStats:
+        """Return aggregate corpus size: file count, word count, total duration."""
         num_files, total_duration = self._conn.execute(
             "SELECT COUNT(*), COALESCE(SUM(duration), 0) FROM files"
         ).fetchone()

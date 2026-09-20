@@ -13,9 +13,11 @@ from pathlib import Path
 
 _TAG_RE = re.compile(r"<[^>]+>")
 _ASS_TAG_RE = re.compile(r"\{[^}]*\}")
-_SRT_TIME_RE = re.compile(
-    r"(\d+):(\d{2}):(\d{2})[,.](\d{3})\s*-->\s*(\d+):(\d{2}):(\d{2})[,.](\d{3})"
-)
+_SRT_TIME_RE = re.compile(r"(\d+):(\d{2}):(\d{2})[,.](\d{3})\s*-->\s*(\d+):(\d{2}):(\d{2})[,.](\d{3})")
+
+_VTT_TIME_LINE_PARTS = 2  # "<start> --> <end>" split on "-->"
+_TIMESTAMP_PARTS_WITH_HOURS = 3  # "H:M:S"
+_TIMESTAMP_PARTS_WITHOUT_HOURS = 2  # "M:S"
 
 
 @dataclass
@@ -95,7 +97,7 @@ def parse_vtt(text: str) -> list[SubtitleLine]:
         if time_line_idx is None:
             continue
         time_line = block_lines[time_line_idx].split("-->")
-        if len(time_line) != 2:
+        if len(time_line) != _VTT_TIME_LINE_PARTS:
             continue
         start = _parse_vtt_timestamp(time_line[0].strip())
         end_part = time_line[1].strip().split(" ")[0]
@@ -112,9 +114,9 @@ def parse_vtt(text: str) -> list[SubtitleLine]:
 def _parse_vtt_timestamp(value: str) -> float | None:
     parts = value.split(":")
     try:
-        if len(parts) == 3:
+        if len(parts) == _TIMESTAMP_PARTS_WITH_HOURS:
             h, m, s = parts
-        elif len(parts) == 2:
+        elif len(parts) == _TIMESTAMP_PARTS_WITHOUT_HOURS:
             h = "0"
             m, s = parts
         else:

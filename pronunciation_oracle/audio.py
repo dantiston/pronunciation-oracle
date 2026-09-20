@@ -14,7 +14,7 @@ from pathlib import Path
 
 
 class FfmpegNotFoundError(RuntimeError):
-    pass
+    """Raised when the `ffmpeg`/`ffprobe` binaries aren't found on PATH."""
 
 
 def _require_binary(name: str) -> str:
@@ -31,12 +31,15 @@ def ffprobe_duration(path: str | Path) -> float:
     ffprobe = _require_binary("ffprobe")
     cmd = [
         ffprobe,
-        "-v", "error",
-        "-show_entries", "format=duration",
-        "-of", "json",
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "json",
         str(path),
     ]
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if proc.returncode != 0:
         raise RuntimeError(f"ffprobe failed for {path}: {proc.stderr.strip()}")
     data = json.loads(proc.stdout)
@@ -61,15 +64,20 @@ def extract_audio(
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     cmd = [
-        ffmpeg, "-y",
-        "-i", str(input_path),
+        ffmpeg,
+        "-y",
+        "-i",
+        str(input_path),
         "-vn",
-        "-ac", str(channels),
-        "-ar", str(sample_rate),
-        "-f", "wav",
+        "-ac",
+        str(channels),
+        "-ar",
+        str(sample_rate),
+        "-f",
+        "wav",
         str(output_path),
     ]
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if proc.returncode != 0:
         raise RuntimeError(f"ffmpeg audio extraction failed for {input_path}: {proc.stderr.strip()}")
     return output_path
@@ -80,6 +88,7 @@ def cut_clip(
     start: float,
     end: float,
     output_path: str | Path,
+    *,
     fmt: str = "wav",
     sample_rate: int | None = None,
 ) -> Path:
@@ -91,10 +100,14 @@ def cut_clip(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     duration = end - start
     cmd = [
-        ffmpeg, "-y",
-        "-ss", f"{start:.3f}",
-        "-i", str(input_path),
-        "-t", f"{duration:.3f}",
+        ffmpeg,
+        "-y",
+        "-ss",
+        f"{start:.3f}",
+        "-i",
+        str(input_path),
+        "-t",
+        f"{duration:.3f}",
         "-vn",
     ]
     if sample_rate:
@@ -105,7 +118,7 @@ def cut_clip(
         cmd += ["-codec:a", "flac"]
     # wav (and any other container) fall through to ffmpeg's default codec.
     cmd += [str(output_path)]
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if proc.returncode != 0:
         raise RuntimeError(f"ffmpeg clip extraction failed for {input_path}: {proc.stderr.strip()}")
     return output_path

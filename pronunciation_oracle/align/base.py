@@ -30,6 +30,15 @@ class ReferenceSegment:
 
 
 class Aligner(ABC):
+    """Interface for reconciling ASR-derived word timing with reference text.
+
+    Implementations decide how to turn `reference` text plus the ASR's own
+    word timestamps into one final, audio-anchored timestamp per reference
+    token. See `SequenceAligner` for the default, dependency-light
+    implementation, and `TorchaudioCTCAligner` for a true forced-alignment
+    alternative.
+    """
+
     @abstractmethod
     def align(
         self,

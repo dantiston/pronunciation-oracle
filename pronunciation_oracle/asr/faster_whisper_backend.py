@@ -1,41 +1,48 @@
-"""ASR backend built on faster-whisper (CTranslate2 Whisper inference).
-
-Chosen as the default real backend because it ships word-level timestamps out
-of the box (via cross-attention + DTW), needs no torch/GPU, and is fast on CPU
-with int8 quantization -- a good fit for batch-processing a media corpus.
-"""
+"""ASR backend built on faster-whisper (CTranslate2 Whisper inference)."""
 
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
+
+from faster_whisper import WhisperModel
 
 from ..transcript import WordTiming
 from .base import ASRBackend, ASRResult
 
 
 class FasterWhisperASR(ASRBackend):
+    """ASR backend built on faster-whisper (CTranslate2 Whisper inference).
+
+    Chosen as the default real backend because it ships word-level timestamps
+    out of the box (via cross-attention + DTW), needs no torch/GPU, and is
+    fast on CPU with int8 quantization -- a good fit for batch-processing a
+    media corpus.
+    """
+
     def __init__(
         self,
         model_size: str = "small",
         device: str = "cpu",
         compute_type: str = "int8",
-        **model_kwargs,
+        **model_kwargs: Any,
     ) -> None:
+        """Configure the backend; the model itself loads lazily on first use.
+
+        Args:
+            model_size: faster-whisper model name/size (tiny/base/small/medium/large-v3).
+            device: "cpu" or "cuda".
+            compute_type: CTranslate2 quantization (e.g. "int8", "float16").
+            **model_kwargs: Passed through to `faster_whisper.WhisperModel`.
+        """
         self._model_size = model_size
         self._device = device
         self._compute_type = compute_type
         self._model_kwargs = model_kwargs
-        self._model = None
+        self._model: WhisperModel | None = None
 
-    def _load_model(self):
+    def _load_model(self) -> WhisperModel:
         if self._model is None:
-            try:
-                from faster_whisper import WhisperModel
-            except ImportError as exc:  # pragma: no cover - exercised only when extra missing
-                raise ImportError(
-                    "faster-whisper is required for FasterWhisperASR. "
-                    "Install it with `pip install pronunciation-oracle[asr]`."
-                ) from exc
             self._model = WhisperModel(
                 self._model_size,
                 device=self._device,
@@ -45,6 +52,15 @@ class FasterWhisperASR(ASRBackend):
         return self._model
 
     def transcribe(self, audio_path: str | Path, language: str | None = None) -> ASRResult:
+        """Transcribe a mono WAV file with faster-whisper.
+
+        Args:
+            audio_path: Path to a mono WAV file (see `audio.extract_audio`).
+            language: Force a language code (e.g. "en"); None auto-detects.
+
+        Returns:
+            The decoded text plus one WordTiming per recognized word.
+        """
         model = self._load_model()
         segments, info = model.transcribe(
             str(audio_path),

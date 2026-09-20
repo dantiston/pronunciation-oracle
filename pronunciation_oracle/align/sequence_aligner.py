@@ -46,6 +46,20 @@ class SequenceAligner(Aligner):
         audio_duration: float | None = None,
         audio_path: str | None = None,
     ) -> list[WordTiming]:
+        """Reconcile ASR word timing with reference text via fuzzy sequence matching.
+
+        Args:
+            asr_words: Word-level timestamps from an ASR backend, in order.
+            reference: The authoritative text to time-align, as one or more segments.
+            audio_duration: Total audio duration in seconds, used only as a last-resort
+                fallback bound when neither a matched neighbor nor a segment boundary
+                is available to anchor an interpolated gap.
+            audio_path: Unused by this aligner; accepted for interface compatibility with
+                aligners (e.g. a CTC forced aligner) that need the raw waveform.
+
+        Returns:
+            One WordTiming per token in `reference`, in order, time-aligned to audio.
+        """
         ref_tokens: list[_RefToken] = []
         for seg_index, seg in enumerate(reference):
             for tok in tokenize(seg.text):
@@ -59,7 +73,7 @@ class SequenceAligner(Aligner):
 
         matcher = difflib.SequenceMatcher(a=asr_norm, b=ref_norm, autojunk=False)
         result: list[WordTiming | None] = [None] * len(ref_tokens)
-        for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        for tag, i1, i2, j1, _j2 in matcher.get_opcodes():
             if tag != "equal":
                 continue
             for offset in range(i2 - i1):
@@ -92,8 +106,10 @@ class SequenceAligner(Aligner):
             while j < n and result[j] is None:
                 j += 1
             # Gap of unmatched reference tokens spans [i, j).
-            prev_time = result[i - 1].end if i > 0 else None
-            next_time = result[j].start if j < n else None
+            prev_anchor = result[i - 1] if i > 0 else None
+            prev_time: float | None = prev_anchor.end if prev_anchor is not None else None
+            next_anchor = result[j] if j < n else None
+            next_time: float | None = next_anchor.start if next_anchor is not None else None
             if prev_time is None:
                 prev_time = reference[ref_tokens[i].seg_index].start
             if next_time is None:
@@ -104,13 +120,16 @@ class SequenceAligner(Aligner):
                 prev_time = 0.0
                 next_time = audio_duration if audio_duration is not None else float(gap_len)
             elif prev_time is None:
+                assert next_time is not None  # the `and` above already ruled this out
                 prev_time = max(0.0, next_time - 0.4 * gap_len)
             elif next_time is None:
+                assert prev_time is not None  # the `and` above already ruled this out
                 next_time = prev_time + 0.4 * gap_len
-            if next_time < prev_time:
-                next_time = prev_time
+            assert prev_time is not None
+            assert next_time is not None
+            next_time = max(next_time, prev_time)
 
-            self._distribute(result, ref_tokens, i, j, prev_time, next_time)
+            self._distribute(result, ref_tokens, i, j, window_start=prev_time, window_end=next_time)
             i = j
 
     @staticmethod
@@ -119,6 +138,7 @@ class SequenceAligner(Aligner):
         ref_tokens: list[_RefToken],
         i: int,
         j: int,
+        *,
         window_start: float,
         window_end: float,
     ) -> None:

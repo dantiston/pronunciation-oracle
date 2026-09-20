@@ -1,3 +1,7 @@
+import wave
+
+import pytest
+
 from pronunciation_oracle.audio import cut_clip, extract_audio, ffprobe_duration
 
 
@@ -9,8 +13,6 @@ def test_ffprobe_duration(tone_wav):
 def test_extract_audio_resamples(tmp_path, tone_wav):
     out = extract_audio(tone_wav, tmp_path / "out.wav", sample_rate=8000, channels=1)
     assert out.exists()
-    import wave
-
     with wave.open(str(out), "rb") as wf:
         assert wf.getframerate() == 8000
         assert wf.getnchannels() == 1
@@ -23,7 +25,5 @@ def test_cut_clip_accurate_duration(tmp_path, tone_wav):
 
 
 def test_cut_clip_rejects_bad_range(tmp_path, tone_wav):
-    import pytest
-
     with pytest.raises(ValueError):
         cut_clip(tone_wav, 2.0, 1.0, tmp_path / "clip.wav")
