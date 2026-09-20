@@ -187,13 +187,16 @@ def build_parser() -> argparse.ArgumentParser:
     add_asr_align_args(p_dir)
     p_dir.set_defaults(func=cmd_ingest_dir)
 
-    p_search = sub.add_parser("search", help="Find every instance of a word and clip it out")
-    p_search.add_argument("word", help="word to search for")
+    p_search = sub.add_parser("search", help="Find every instance of a word or phrase and clip it out")
+    p_search.add_argument("word", help="word or phrase to search for (quote multi-word phrases)")
     p_search.add_argument("--corpus", required=True, help="path to the corpus SQLite database")
     p_search.add_argument("--out", default=None, help="directory to write clips into (omit to just list hits)")
     p_search.add_argument("--pad", type=float, default=0.15, help="seconds of padding around each clip")
     p_search.add_argument("--format", choices=["wav", "mp3", "flac"], default="wav")
-    p_search.add_argument("--contains", action="store_true", help="substring match instead of exact word match")
+    p_search.add_argument(
+        "--contains", action="store_true",
+        help="substring match instead of exact match (applied per word for a phrase)",
+    )
     p_search.add_argument("--min-confidence", type=float, default=None)
     p_search.add_argument("--limit", type=int, default=None)
     p_search.set_defaults(func=cmd_search)

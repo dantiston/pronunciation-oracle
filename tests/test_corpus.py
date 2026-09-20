@@ -85,3 +85,76 @@ def test_context_manager_closes(tmp_path):
     with Corpus(tmp_path / "corpus.db") as corpus:
         corpus.add_transcript(_transcript("ep01.mp4", ["pikachu"]))
         assert corpus.stats().num_words == 1
+
+
+def test_search_phrase_matches_contiguous_words(tmp_path):
+    corpus = Corpus(tmp_path / "corpus.db")
+    corpus.add_transcript(_transcript("ep01.mp4", ["Hey,", "Pikachu!", "I", "choose", "you."]))
+    corpus.add_transcript(_transcript("ep02.mp4", ["I", "will", "choose", "you", "later"]))
+
+    hits = corpus.search("I choose you")
+    assert len(hits) == 1
+    assert hits[0].file_path == "ep01.mp4"
+    assert hits[0].word == "I choose you."
+    corpus.close()
+
+
+def test_search_phrase_span_covers_first_to_last_word(tmp_path):
+    corpus = Corpus(tmp_path / "corpus.db")
+    corpus.add_transcript(_transcript("ep01.mp4", ["hey", "pikachu", "use", "thunderbolt", "now"]))
+    hits = corpus.search("use thunderbolt")
+    assert len(hits) == 1
+    # WordTiming for word i spans [i, i+0.5); "use" is index 2, "thunderbolt" is index 3.
+    assert hits[0].start == 2.0
+    assert hits[0].end == 3.5
+    corpus.close()
+
+
+def test_search_phrase_context_is_relative_to_whole_span(tmp_path):
+    corpus = Corpus(tmp_path / "corpus.db")
+    corpus.add_transcript(_transcript("ep01.mp4", ["hey", "pikachu", "use", "thunderbolt", "now", "please"]))
+    hits = corpus.search("use thunderbolt", context_words=2)
+    assert hits[0].context_before == "hey pikachu"
+    assert hits[0].context_after == "now please"
+    corpus.close()
+
+
+def test_search_phrase_requires_adjacency_not_just_presence(tmp_path):
+    corpus = Corpus(tmp_path / "corpus.db")
+    # "use" and "thunderbolt" both appear, but not next to each other.
+    corpus.add_transcript(_transcript("ep01.mp4", ["use", "the", "move", "thunderbolt"]))
+    assert corpus.search("use thunderbolt") == []
+    corpus.close()
+
+
+def test_search_phrase_does_not_run_past_end_of_file(tmp_path):
+    corpus = Corpus(tmp_path / "corpus.db")
+    corpus.add_transcript(_transcript("ep01.mp4", ["hey", "pikachu"]))
+    assert corpus.search("pikachu go") == []
+    corpus.close()
+
+
+def test_search_phrase_contains_mode_matches_per_token(tmp_path):
+    corpus = Corpus(tmp_path / "corpus.db")
+    corpus.add_transcript(_transcript("ep01.mp4", ["hey", "pikachu", "thunderbolt"]))
+    hits = corpus.search("pika thunder", contains=True)
+    assert len(hits) == 1
+    assert hits[0].word == "pikachu thunderbolt"
+    corpus.close()
+
+
+def test_search_phrase_confidence_is_min_across_words(tmp_path):
+    corpus = Corpus(tmp_path / "corpus.db")
+    transcript = Transcript(
+        source_path="ep01.mp4",
+        duration=10.0,
+        words=[
+            WordTiming("use", 0.0, 0.5, 0.95),
+            WordTiming("thunderbolt", 0.5, 1.0, 0.4),
+        ],
+    )
+    corpus.add_transcript(transcript)
+    hits = corpus.search("use thunderbolt")
+    assert hits[0].confidence == 0.4
+    assert corpus.search("use thunderbolt", min_confidence=0.5) == []
+    corpus.close()

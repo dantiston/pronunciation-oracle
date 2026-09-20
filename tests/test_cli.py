@@ -52,6 +52,35 @@ def test_ingest_and_search_end_to_end(tmp_path, tone_wav, capsys):
     assert manifest[0]["context_after"] == "use thunderbolt"
 
 
+def test_search_phrase_end_to_end(tmp_path, tone_wav, capsys):
+    corpus_path = tmp_path / "corpus.db"
+    fake_words = _fake_words_json(tmp_path)
+    main([
+        "ingest", str(tone_wav),
+        "--corpus", str(corpus_path),
+        "--asr-backend", "fake",
+        "--fake-words-json", str(fake_words),
+    ])
+    capsys.readouterr()
+
+    out_dir = tmp_path / "phrase_clips"
+    rc = main([
+        "search", "use thunderbolt",
+        "--corpus", str(corpus_path),
+        "--out", str(out_dir),
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Found 1 instance" in out
+
+    manifest = json.loads((out_dir / "manifest.json").read_text())
+    assert len(manifest) == 1
+    assert manifest[0]["word"] == "use thunderbolt"
+    # Span covers from "use"'s start to "thunderbolt"'s end.
+    assert manifest[0]["word_start"] == 1.3
+    assert manifest[0]["word_end"] == 2.2
+
+
 def test_search_no_matches(tmp_path, tone_wav, capsys):
     corpus_path = tmp_path / "corpus.db"
     fake_words = _fake_words_json(tmp_path)

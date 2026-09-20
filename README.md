@@ -55,6 +55,9 @@ pronunciation-oracle ingest-dir ./pokemon_season1 --corpus corpus.db
 # Find every "pikachu" and clip it out:
 pronunciation-oracle search pikachu --corpus corpus.db --out clips/ --pad 0.15
 
+# Phrases work too -- matched as consecutive spoken words in one file:
+pronunciation-oracle search "I choose you" --corpus corpus.db --out clips/
+
 # Just list hits without clipping:
 pronunciation-oracle search pikachu --corpus corpus.db
 
@@ -110,8 +113,11 @@ Every stage is behind a small interface so pieces can be swapped independently:
   waveform, for higher-precision phoneme-level timing at the cost of a
   torch/torchaudio dependency and model download (`pip install .[align-ctc]`).
 - **`corpus.Corpus`** -- SQLite-backed word index (`files`, `words` tables,
-  indexed on normalized word). Swappable for a different store if the corpus
-  grows past what SQLite comfortably handles.
+  indexed on normalized word). `search()` takes either a single word or a
+  phrase; a phrase is matched as a contiguous run of `word_index`s in one
+  file (no fuzzy/skip-word matching) and returned as one hit spanning the
+  first word's start to the last word's end. Swappable for a different store
+  if the corpus grows past what SQLite comfortably handles.
 - **`clipper.extract_clips`** -- ffmpeg-based cutting; ffmpeg does the actual
   audio-only accurate-seek extraction (`audio.py`).
 

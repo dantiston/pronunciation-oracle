@@ -1,7 +1,9 @@
 """Step (2)'s index: a SQLite-backed corpus of every word spoken in every ingested file.
 
-Search is a simple normalized-word lookup (optionally substring/"contains"),
-returning every occurrence with its timestamps so the clipper can cut each one out.
+Search is a normalized-word lookup (optionally substring/"contains") over one word
+or a whole phrase, returning every occurrence with its timestamps so the clipper
+can cut each one out. A phrase query is matched as a contiguous run of words in a
+single file -- there's no fuzzy/skip-word matching.
 """
 
 from __future__ import annotations
@@ -11,7 +13,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .text_norm import normalize_word
+from .text_norm import normalize_word, tokenize
 from .transcript import Transcript
 
 _SCHEMA = """
@@ -137,13 +139,33 @@ class Corpus:
 
     def search(
         self,
-        word: str,
+        query: str,
         contains: bool = False,
         min_confidence: float | None = None,
         context_words: int = 3,
         limit: int | None = None,
     ) -> list[SearchHit]:
-        norm = normalize_word(word)
+        """Search for one word or a whole phrase (e.g. "pikachu" or "I choose you").
+
+        A multi-word query must appear as consecutive words in a single file;
+        each token is matched the same way a single-word query would be
+        (`contains`/`min_confidence` apply per token).
+        """
+        tokens = [t for t in (normalize_word(tok) for tok in tokenize(query)) if t]
+        if not tokens:
+            return []
+        if len(tokens) == 1:
+            return self._search_word(tokens[0], contains, min_confidence, context_words, limit)
+        return self._search_phrase(tokens, contains, min_confidence, context_words, limit)
+
+    def _search_word(
+        self,
+        norm: str,
+        contains: bool,
+        min_confidence: float | None,
+        context_words: int,
+        limit: int | None,
+    ) -> list[SearchHit]:
         cur = self._conn.cursor()
         if contains:
             rows = cur.execute(
@@ -166,7 +188,7 @@ class Corpus:
         for _id, path, word_index, matched_word, start, end, confidence, file_id in rows:
             if min_confidence is not None and confidence is not None and confidence < min_confidence:
                 continue
-            context_before, context_after = self._context(cur, file_id, word_index, context_words)
+            context_before, context_after = self._context(cur, file_id, word_index, word_index, context_words)
             hits.append(
                 SearchHit(
                     file_path=path,
@@ -182,16 +204,78 @@ class Corpus:
                 break
         return hits
 
-    def _context(self, cur: sqlite3.Cursor, file_id: int, word_index: int, n: int) -> tuple[str, str]:
+    def _search_phrase(
+        self,
+        tokens: list[str],
+        contains: bool,
+        min_confidence: float | None,
+        context_words: int,
+        limit: int | None,
+    ) -> list[SearchHit]:
+        cur = self._conn.cursor()
+        first = tokens[0]
+        if contains:
+            anchors = cur.execute(
+                "SELECT f.path, w.file_id, w.word_index FROM words w JOIN files f ON f.id = w.file_id "
+                "WHERE w.norm_word LIKE ? ESCAPE '\\' ORDER BY f.path, w.word_index",
+                (f"%{_escape_like(first)}%",),
+            ).fetchall()
+        else:
+            anchors = cur.execute(
+                "SELECT f.path, w.file_id, w.word_index FROM words w JOIN files f ON f.id = w.file_id "
+                "WHERE w.norm_word = ? ORDER BY f.path, w.word_index",
+                (first,),
+            ).fetchall()
+
+        hits: list[SearchHit] = []
+        for path, file_id, word_index in anchors:
+            span = cur.execute(
+                "SELECT word_index, word, norm_word, start, end, confidence FROM words "
+                "WHERE file_id = ? AND word_index BETWEEN ? AND ? ORDER BY word_index",
+                (file_id, word_index, word_index + len(tokens) - 1),
+            ).fetchall()
+            if len(span) != len(tokens):
+                continue  # phrase would run past the end of the file
+            if not all(
+                (tok in norm_word) if contains else (tok == norm_word)
+                for tok, (_idx, _word, norm_word, _s, _e, _c) in zip(tokens, span)
+            ):
+                continue
+            confidences = [c for *_rest, c in span if c is not None]
+            if min_confidence is not None and confidences and min(confidences) < min_confidence:
+                continue
+
+            first_idx, last_idx = span[0][0], span[-1][0]
+            context_before, context_after = self._context(cur, file_id, first_idx, last_idx, context_words)
+            hits.append(
+                SearchHit(
+                    file_path=path,
+                    word=" ".join(row[1] for row in span),
+                    start=span[0][3],
+                    end=span[-1][4],
+                    confidence=min(confidences) if confidences else None,
+                    context_before=context_before,
+                    context_after=context_after,
+                )
+            )
+            if limit is not None and len(hits) >= limit:
+                break
+        return hits
+
+    def _context(
+        self, cur: sqlite3.Cursor, file_id: int, before_index: int, after_index: int, n: int
+    ) -> tuple[str, str]:
+        """Words surrounding a match, `n` on each side. before/after_index bound the
+        match itself (equal for a single word; first/last word_index for a phrase)."""
         if n <= 0:
             return "", ""
         before_rows = cur.execute(
             "SELECT word FROM words WHERE file_id = ? AND word_index BETWEEN ? AND ? ORDER BY word_index",
-            (file_id, word_index - n, word_index - 1),
+            (file_id, before_index - n, before_index - 1),
         ).fetchall()
         after_rows = cur.execute(
             "SELECT word FROM words WHERE file_id = ? AND word_index BETWEEN ? AND ? ORDER BY word_index",
-            (file_id, word_index + 1, word_index + n),
+            (file_id, after_index + 1, after_index + n),
         ).fetchall()
         return " ".join(r[0] for r in before_rows), " ".join(r[0] for r in after_rows)
 
