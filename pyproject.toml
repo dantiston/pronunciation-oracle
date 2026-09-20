@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pronunciation-oracle"
+version = "0.1.0"
+description = "Transcribe and align media files, then search a corpus for every spoken instance of a word and clip the audio."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = []
+
+[project.optional-dependencies]
+asr = ["faster-whisper>=1.0.0"]
+align-ctc = ["torch>=2.1", "torchaudio>=2.1"]
+dev = ["pytest>=7.4"]
+all = ["faster-whisper>=1.0.0", "torch>=2.1", "torchaudio>=2.1"]
+
+[project.scripts]
+pronunciation-oracle = "pronunciation_oracle.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["pronunciation_oracle*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
