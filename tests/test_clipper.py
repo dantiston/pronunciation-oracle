@@ -49,3 +49,21 @@ def test_extract_clips_clamps_to_file_duration(tmp_path, tone_wav):
     hits = [SearchHit(str(tone_wav), "end", duration - 0.05, duration - 0.01, 0.9, "", "")]
     results = extract_clips(hits, tmp_path / "clips", pad=1.0)
     assert results[0].clip_end <= duration
+
+
+def test_extract_clips_groups_punctuation_variants_into_one_folder(tmp_path, tone_wav):
+    # Real transcripts spell the same word differently by sentence position
+    # ("Pikachu." vs "Pikachu," vs "Pikachu!"); all instances of one search
+    # should land in a single output folder, not be scattered by punctuation.
+    hits = [
+        SearchHit(str(tone_wav), "Pikachu.", 0.5, 0.8, 0.9, "", ""),
+        SearchHit(str(tone_wav), "Pikachu,", 1.0, 1.3, 0.9, "", ""),
+        SearchHit(str(tone_wav), "Pikachu!", 1.5, 1.8, 0.9, "", ""),
+        SearchHit(str(tone_wav), "PIKACHU", 2.0, 2.3, 0.9, "", ""),
+    ]
+    out_dir = tmp_path / "clips"
+    results = extract_clips(hits, out_dir, pad=0.05)
+
+    word_dirs = {Path(r.output_path).parent for r in results}
+    assert word_dirs == {out_dir / "pikachu"}
+    assert len(list((out_dir / "pikachu").glob("*.wav"))) == 4

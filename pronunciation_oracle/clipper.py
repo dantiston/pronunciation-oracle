@@ -10,6 +10,7 @@ from pathlib import Path
 
 from .audio import cut_clip, ffprobe_duration
 from .corpus import SearchHit
+from .text_norm import normalize_word, tokenize
 
 _SLUG_RE = re.compile(r"[^A-Za-z0-9._-]+")
 
@@ -17,6 +18,19 @@ _SLUG_RE = re.compile(r"[^A-Za-z0-9._-]+")
 def _slugify(value: str) -> str:
     slug = _SLUG_RE.sub("_", value).strip("_")
     return slug or "clip"
+
+
+def _group_key(word: str) -> str:
+    """Folder name for a matched word/phrase, punctuation- and case-insensitive.
+
+    Real transcripts spell the same word differently depending on sentence
+    position ("Pikachu." vs "Pikachu," vs "Pikachu!"), so grouping by the raw
+    matched text would scatter one search's hits across several sibling
+    folders. Group by normalized tokens instead so they all land together.
+    """
+    norm_tokens = [normalize_word(tok) for tok in tokenize(word)]
+    key = "_".join(t for t in norm_tokens if t)
+    return key or "clip"
 
 
 @dataclass
@@ -62,7 +76,7 @@ def extract_clips(
         if clip_end <= clip_start:
             clip_end = min(file_duration, clip_start + 0.05)
 
-        word_dir = output_dir / _slugify(hit.word.lower())
+        word_dir = output_dir / _group_key(hit.word)
         word_dir.mkdir(parents=True, exist_ok=True)
         stem = Path(hit.file_path).stem
         base_name = f"{_slugify(stem)}_{int(hit.start * 1000)}-{int(hit.end * 1000)}.{fmt}"
