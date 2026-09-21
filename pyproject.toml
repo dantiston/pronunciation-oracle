@@ -12,9 +12,15 @@ license = { text = "MIT" }
 dependencies = ["faster-whisper>=1.0.0"]
 
 [project.optional-dependencies]
-align-ctc = ["torch>=2.1", "torchaudio>=2.1"]
+align-ctc = ["torch>=2.1", "torchaudio>=2.1", "torchcodec>=0.1"]
+mlx = ["mlx-whisper>=0.4; sys_platform == 'darwin' and platform_machine == 'arm64'"]
 dev = ["pytest>=7.4", "ruff>=0.16", "ty>=0.0.80"]
-all = ["torch>=2.1", "torchaudio>=2.1"]
+all = [
+    "torch>=2.1",
+    "torchaudio>=2.1",
+    "torchcodec>=0.1",
+    "mlx-whisper>=0.4; sys_platform == 'darwin' and platform_machine == 'arm64'",
+]
 
 [project.scripts]
 pronunciation-oracle = "pronunciation_oracle.cli:main"

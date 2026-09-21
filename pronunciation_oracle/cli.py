@@ -20,6 +20,7 @@ from .align.sequence_aligner import SequenceAligner
 from .asr.base import ASRBackend
 from .asr.fake import FakeASR
 from .asr.faster_whisper_backend import FasterWhisperASR
+from .asr.mlx_whisper_backend import MlxWhisperASR
 from .clipper import extract_clips
 from .corpus import Corpus
 from .pipeline import transcribe_and_align
@@ -45,10 +46,10 @@ def build_asr_backend(name: str, args: argparse.Namespace, cpu_threads: int | No
     """Construct the ASR backend named by `--asr-backend`.
 
     Args:
-        name: "faster-whisper" or "fake".
+        name: "faster-whisper", "mlx-whisper", or "fake".
         args: Parsed CLI namespace; reads --model/--device/--compute-type/
-            --vad-filter for faster-whisper, or --fake-words-json for the
-            fake backend.
+            --vad-filter for faster-whisper, --model for mlx-whisper, or
+            --fake-words-json for the fake backend.
         cpu_threads: [faster-whisper only] override ctranslate2's thread count.
             Used to divide cores evenly across --workers parallel processes
             instead of letting each one auto-detect and oversubscribe the CPU.
@@ -68,6 +69,8 @@ def build_asr_backend(name: str, args: argparse.Namespace, cpu_threads: int | No
             vad_filter=args.vad_filter,
             **extra,
         )
+    if name == "mlx-whisper":
+        return MlxWhisperASR(model_size=args.model)
     if name == "fake":
         words = []
         if args.fake_words_json:
@@ -77,12 +80,14 @@ def build_asr_backend(name: str, args: argparse.Namespace, cpu_threads: int | No
     raise ValueError(f"unknown ASR backend: {name}")
 
 
-def build_aligner(name: str) -> Aligner:
+def build_aligner(name: str, device: str = "auto") -> Aligner:
     """Construct the Aligner named by `--align-backend`.
 
     Args:
         name: "sequence" (default, no extra deps) or "ctc" (requires the
             align-ctc extra).
+        device: [ctc only] "auto" (default) picks the best available torch
+            device (cuda, then mps, then cpu); see `TorchaudioCTCAligner`.
 
     Returns:
         A ready-to-use Aligner.
@@ -95,7 +100,7 @@ def build_aligner(name: str) -> Aligner:
     if name == "ctc":
         from .align.torchaudio_ctc import TorchaudioCTCAligner  # noqa: PLC0415 -- optional extra
 
-        return TorchaudioCTCAligner()
+        return TorchaudioCTCAligner(device=device)
     raise ValueError(f"unknown aligner: {name}")
 
 
@@ -122,7 +127,7 @@ def _init_ingest_worker(args: argparse.Namespace, cpu_threads: int) -> None:
     """
     global _worker_asr, _worker_aligner  # noqa: PLW0603 -- the documented ProcessPoolExecutor(initializer=...) pattern
     _worker_asr = build_asr_backend(args.asr_backend, args, cpu_threads=cpu_threads)
-    _worker_aligner = build_aligner(args.align_backend)
+    _worker_aligner = build_aligner(args.align_backend, device=args.align_device)
 
 
 def _ingest_one(media_path: Path, subtitles_path: Path | None, language: str | None) -> Transcript:
@@ -140,7 +145,7 @@ def _ingest_one(media_path: Path, subtitles_path: Path | None, language: str | N
 def cmd_ingest(args: argparse.Namespace) -> int:
     """Handle `ingest`: transcribe/align one media file and add it to the corpus."""
     asr = build_asr_backend(args.asr_backend, args)
-    aligner = build_aligner(args.align_backend)
+    aligner = build_aligner(args.align_backend, device=args.align_device)
     transcript = transcribe_and_align(
         args.media,
         subtitles_path=args.subtitles,
@@ -200,7 +205,7 @@ def cmd_ingest_dir(args: argparse.Namespace) -> int:
     with Corpus(args.corpus) as corpus:
         if workers == 1:
             asr = build_asr_backend(args.asr_backend, args)
-            aligner = build_aligner(args.align_backend)
+            aligner = build_aligner(args.align_backend, device=args.align_device)
             for media_path in media_files:
                 subtitles = subtitles_by_path[media_path]
                 try:
@@ -290,10 +295,21 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     def add_asr_align_args(p: argparse.ArgumentParser) -> None:
-        p.add_argument("--asr-backend", choices=["faster-whisper", "fake"], default="faster-whisper")
+        p.add_argument(
+            "--asr-backend", choices=["faster-whisper", "mlx-whisper", "fake"], default="faster-whisper"
+        )
         p.add_argument("--align-backend", choices=["sequence", "ctc"], default="sequence")
         p.add_argument(
-            "--model", default="small", help="faster-whisper model size (tiny/base/small/medium/large-v3)"
+            "--align-device",
+            default="auto",
+            help="[ctc align-backend only] torch device: auto (default, picks cuda/mps/cpu), "
+            "or force cpu/cuda/mps",
+        )
+        p.add_argument(
+            "--model",
+            default="small",
+            help="model size (tiny/base/small/medium/large-v3); for --asr-backend mlx-whisper this "
+            "maps to an mlx-community/whisper-<size>-mlx repo",
         )
         p.add_argument("--device", default="cpu")
         p.add_argument("--compute-type", default="int8")

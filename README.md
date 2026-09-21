@@ -37,7 +37,8 @@ media/*.mp4,*.srt  --[1] transcribe_and_align-->  Transcript (per file)
 
 ```bash
 pip install -e .                     # faster-whisper is a base dependency (CPU-friendly, no GPU needed)
-# or: pip install -e ".[align-ctc]"  # + optional torchaudio CTC forced aligner
+# or: pip install -e ".[align-ctc]"  # + optional torchaudio CTC forced aligner (auto-uses cuda/mps GPU if available)
+# or: pip install -e ".[mlx]"        # + optional mlx-whisper ASR backend (Apple Silicon only, Metal-accelerated)
 ```
 
 Requires `ffmpeg`/`ffprobe` on PATH (`brew install ffmpeg` / `apt-get install ffmpeg`).
@@ -84,12 +85,35 @@ confidence, exactly what `search --min-confidence` is for -- so pair a fast
 model with a confidence filter on search. Without subtitles (pure ASR path),
 `tiny`'s raw word accuracy is the whole result, so stick with `small` or larger.
 
+**GPU/MPS options, validated before recommending either.** `--align-backend
+ctc` (the `align-ctc` extra) auto-picks cuda, then mps (Apple Silicon GPU via
+Metal), then cpu -- it's the same model and math either way, so this is a
+free speed win with no accuracy tradeoff (verified matching output on cpu vs
+mps). Note: torchaudio's forced_align op isn't implemented for MPS in current
+torch, so mps runs with a required (automatic) CPU fallback for just that one
+op; measured speedup was modest (~30-40% on a short clip), not dramatic.
+`--asr-backend mlx-whisper` (the `mlx` extra, Apple Silicon only) is a
+different story: measured 3.9x faster than faster-whisper's cpu "small" on a
+5-minute clip, but on a real recall check, it missed roughly half the actual
+instances of a repeated word that faster-whisper's "small" caught correctly
+(misheard as short fragments) -- and mlx-whisper's "medium", 8x slower,
+did *worse*, not better, so this isn't a "just use a bigger model" fix. Not a
+safe drop-in replacement for faster-whisper without checking it against your
+own content the way this project's other defaults were checked.
+
 Useful flags:
 - `--contains` on `search`: substring match (e.g. `pika` also matches `pikachu`).
 - `--min-confidence`: drop low-confidence (usually interpolated) hits.
 - `--format {wav,mp3,flac}`: clip output format.
-- `--model {tiny,base,small,medium,large-v3}` / `--device` / `--compute-type`: faster-whisper tuning.
-- `--align-backend {sequence,ctc}`: alignment engine (see below).
+- `--model {tiny,base,small,medium,large-v3}` / `--device` / `--compute-type` /
+  `--vad-filter`/`--no-vad-filter`: faster-whisper tuning. `--vad-filter` is on
+  by default (skips non-speech before decoding, ~30% faster) but on content
+  with near-continuous background music under dialogue it can also drop real
+  spoken words along with the music (measured ~57% recall loss on one such
+  case) -- pass `--no-vad-filter` if that's a real risk for your content.
+- `--asr-backend {faster-whisper,mlx-whisper,fake}`: ASR engine (see GPU/MPS above).
+- `--align-backend {sequence,ctc}` / `--align-device {auto,cpu,cuda,mps}`:
+  alignment engine (see below and GPU/MPS above).
 - `ingest-dir --workers N`: transcribe N files concurrently, each in its own
   process/model instance. Defaults to 1 (sequential) -- benchmarked on Apple
   Silicon CPU, a single faster-whisper process already saturates the
@@ -120,7 +144,9 @@ Every stage is behind a small interface so pieces can be swapped independently:
 - **`asr.base.ASRBackend`** -- `transcribe(audio_path) -> ASRResult` (word-level
   timestamps). Default: `FasterWhisperASR` (CTranslate2 Whisper, no torch/GPU
   needed). `FakeASR` provides canned output for tests/offline demos
-  (`--asr-backend fake --fake-words-json words.json`).
+  (`--asr-backend fake --fake-words-json words.json`). Optional:
+  `asr.mlx_whisper_backend.MlxWhisperASR` (`--asr-backend mlx-whisper`, Apple
+  Silicon only, the `mlx` extra) -- see GPU/MPS above before relying on it.
 - **`align.base.Aligner`** -- `align(asr_words, reference_segments) -> [WordTiming]`.
   Default: `SequenceAligner`, a dependency-light forced-alignment approximation:
   it fuzzy-matches the reference text against the ASR's word sequence
@@ -133,6 +159,7 @@ Every stage is behind a small interface so pieces can be swapped independently:
   CTC forced alignment via `torchaudio.pipelines.MMS_FA` directly against the
   waveform, for higher-precision phoneme-level timing at the cost of a
   torch/torchaudio dependency and model download (`pip install .[align-ctc]`).
+  Runs on cuda/mps/cpu, auto-selected (`--align-device auto`, the default).
 - **`corpus.Corpus`** -- SQLite-backed word index (`files`, `words` tables,
   indexed on normalized word). `search()` takes either a single word or a
   phrase; a phrase is matched as a contiguous run of `word_index`s in one
