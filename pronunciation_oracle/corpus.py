@@ -161,6 +161,15 @@ class Corpus:
         self._conn.execute("DELETE FROM files WHERE path = ?", (str(path),))
         self._conn.commit()
 
+    def ingested_paths(self) -> set[str]:
+        """Return every source path already in the corpus, for resuming a batch ingest.
+
+        Cheap existence check (no join for word counts, unlike `files()`) --
+        used to skip files a previous `ingest-dir` run already committed.
+        """
+        rows = self._conn.execute("SELECT path FROM files").fetchall()
+        return {row[0] for row in rows}
+
     def search(
         self,
         query: str,

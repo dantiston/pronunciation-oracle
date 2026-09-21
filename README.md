@@ -52,6 +52,8 @@ pronunciation-oracle ingest pokemon_ep01.mp4 --subtitles pokemon_ep01.srt --corp
 
 # Or batch-ingest a whole season (matches ep01.mp4 with ep01.srt automatically):
 pronunciation-oracle ingest-dir ./pokemon_season1 --corpus corpus.db
+# Interrupted or partially failed? Just run the same command again -- files
+# already in the corpus are skipped, so it resumes instead of starting over.
 
 # Find every "pikachu" and clip it out:
 pronunciation-oracle search pikachu --corpus corpus.db --out clips/ --pad 0.3
@@ -140,6 +142,16 @@ Useful flags:
   batch ~3% *slower* from process contention, not faster. May help on
   different hardware (GPU, many-core setups where one process doesn't
   saturate available compute); benchmark before relying on it.
+- `ingest-dir --reingest`: reprocess every matched file even if it's already
+  in the corpus. `ingest-dir` is resumable by default -- a file already in
+  the corpus is skipped, so re-running after an interruption or a failure
+  (individual files that fail are reported and skipped, not fatal) picks up
+  where it left off instead of starting over; a previously-failed file is
+  retried automatically either way, since it was never added. Pass
+  `--reingest` after changing `--model`/`--vad-filter`/etc. to force fresh
+  results for files already ingested under the old settings. Resume matching
+  is by exact path string as stored in the corpus, so re-running from a
+  different working directory won't be recognized as the same files.
 
 ## Library
 

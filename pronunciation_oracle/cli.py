@@ -183,6 +183,21 @@ def _record_transcript(
 def cmd_ingest_dir(args: argparse.Namespace) -> int:
     """Handle `ingest-dir`: batch-ingest every media file under a directory.
 
+    Resumable by default: a file already present in the corpus (from a
+    previous run of this same command against the same corpus) is skipped
+    rather than re-transcribed, since `Corpus.add_transcript` commits each
+    file immediately, so the corpus itself is always an accurate record of
+    what's done -- no separate state file needed. A file that failed on a
+    previous run was never added, so it's indistinguishable from "not yet
+    attempted" and is retried automatically. Pass --reingest to force
+    reprocessing everything regardless (e.g. after changing --model or
+    --vad-filter and wanting fresh results for already-ingested files too).
+
+    Skip matching is by exact path string as stored in the corpus (the same
+    string `ingest`/`Corpus.add_transcript` already key on) -- re-running
+    from a different working directory, or with a differently-formed path to
+    the same file, won't be recognized as the same file.
+
     A single bad file (unreadable, ffmpeg failure, ASR error, ...) is reported
     and skipped rather than aborting the whole batch, but is not silently
     swallowed: it's printed with its exception type, and the command exits
@@ -209,10 +224,22 @@ def cmd_ingest_dir(args: argparse.Namespace) -> int:
     }
 
     with Corpus(args.corpus) as corpus:
+        already = set() if args.reingest else corpus.ingested_paths()
+        to_process = [p for p in media_files if str(p) not in already]
+        skipped = len(media_files) - len(to_process)
+        if skipped:
+            print(
+                f"Skipping {skipped} already-ingested file(s) (pass --reingest to force); "
+                f"{len(to_process)} to process."
+            )
+        if not to_process:
+            print(f"Done: {len(media_files)} files scanned, 0 processed, {skipped} skipped.")
+            return 0
+
         if workers == 1:
             asr = build_asr_backend(args.asr_backend, args)
             aligner = build_aligner(args.align_backend, device=args.align_device)
-            for media_path in media_files:
+            for media_path in to_process:
                 subtitles = subtitles_by_path[media_path]
                 try:
                     transcript = transcribe_and_align(
@@ -233,7 +260,7 @@ def cmd_ingest_dir(args: argparse.Namespace) -> int:
                     pool.submit(
                         _ingest_one, media_path, subtitles_by_path[media_path], args.language
                     ): media_path
-                    for media_path in media_files
+                    for media_path in to_process
                 }
                 for future in as_completed(futures):
                     media_path = futures[future]
@@ -246,7 +273,11 @@ def cmd_ingest_dir(args: argparse.Namespace) -> int:
                         continue
                     total_words += _record_transcript(corpus, media_path, subtitles, transcript)
 
-    print(f"Done: {len(media_files)} files scanned, {total_words} words indexed.")
+    processed = len(to_process) - len(failed)
+    print(
+        f"Done: {len(media_files)} files scanned, {processed} processed, "
+        f"{skipped} skipped, {total_words} words indexed."
+    )
     if failed:
         names = ", ".join(p.name for p in failed)
         print(f"{len(failed)} file(s) failed to ingest: {names}", file=sys.stderr)
@@ -357,6 +388,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-subtitles",
         action="store_true",
         help="ignore same-named .srt/.vtt files and use ASR text directly",
+    )
+    p_dir.add_argument(
+        "--reingest",
+        action="store_true",
+        help="reprocess every matched file even if it's already in the corpus (default: skip "
+        "already-ingested files, so re-running after an interruption or failure resumes instead "
+        "of starting over; a previously-failed file is retried automatically either way, since "
+        "it was never added to the corpus in the first place)",
     )
     p_dir.add_argument(
         "--workers",

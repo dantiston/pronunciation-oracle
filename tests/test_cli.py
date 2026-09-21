@@ -324,6 +324,111 @@ def test_ingest_dir_parallel_reports_failures_and_exit_code(tmp_path, tone_wav, 
         assert corpus.stats().num_files == 1
 
 
+def _ingest_dir_argv(media_dir, corpus_path, fake_words, *extra):
+    return [
+        "ingest-dir",
+        str(media_dir),
+        "--corpus",
+        str(corpus_path),
+        "--asr-backend",
+        "fake",
+        "--fake-words-json",
+        str(fake_words),
+        *extra,
+    ]
+
+
+def test_ingest_dir_resumes_by_default_skipping_completed_files(tmp_path, tone_wav, capsys):
+    media_dir = tmp_path / "media"
+    media_dir.mkdir()
+    shutil.copy(tone_wav, media_dir / "ep01.wav")
+    shutil.copy(tone_wav, media_dir / "ep02.wav")
+    fake_words = _fake_words_json(tmp_path)
+    corpus_path = tmp_path / "corpus.db"
+
+    main(_ingest_dir_argv(media_dir, corpus_path, fake_words))
+    capsys.readouterr()
+    with Corpus(corpus_path) as corpus:
+        first_run_stats = corpus.stats()
+
+    rc = main(_ingest_dir_argv(media_dir, corpus_path, fake_words))
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Skipping 2 already-ingested file(s)" in out
+    assert "Ingested" not in out  # nothing was actually reprocessed
+    assert "Done: 2 files scanned, 0 processed, 2 skipped" in out
+    with Corpus(corpus_path) as corpus:
+        assert corpus.stats() == first_run_stats
+
+
+def test_ingest_dir_processes_only_new_files_on_resume(tmp_path, tone_wav, capsys):
+    media_dir = tmp_path / "media"
+    media_dir.mkdir()
+    shutil.copy(tone_wav, media_dir / "ep01.wav")
+    fake_words = _fake_words_json(tmp_path)
+    corpus_path = tmp_path / "corpus.db"
+
+    main(_ingest_dir_argv(media_dir, corpus_path, fake_words))
+    capsys.readouterr()
+
+    # A new episode shows up alongside the one already ingested.
+    shutil.copy(tone_wav, media_dir / "ep02.wav")
+    rc = main(_ingest_dir_argv(media_dir, corpus_path, fake_words))
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Skipping 1 already-ingested file(s)" in out
+    assert "1 to process." in out
+    assert "Ingested ep02.wav" in out
+    assert "Ingested ep01.wav" not in out
+    with Corpus(corpus_path) as corpus:
+        assert corpus.stats().num_files == 2
+
+
+def test_ingest_dir_reingest_flag_forces_reprocessing(tmp_path, tone_wav, capsys):
+    media_dir = tmp_path / "media"
+    media_dir.mkdir()
+    shutil.copy(tone_wav, media_dir / "ep01.wav")
+    fake_words = _fake_words_json(tmp_path)
+    corpus_path = tmp_path / "corpus.db"
+
+    main(_ingest_dir_argv(media_dir, corpus_path, fake_words))
+    capsys.readouterr()
+
+    rc = main(_ingest_dir_argv(media_dir, corpus_path, fake_words, "--reingest"))
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Skipping" not in out
+    assert "Ingested ep01.wav" in out
+
+
+@pytest.mark.parametrize("workers", [1, 2])
+def test_ingest_dir_resume_retries_only_the_previously_failed_file(tmp_path, tone_wav, capsys, workers):
+    media_dir = tmp_path / "media"
+    media_dir.mkdir()
+    shutil.copy(tone_wav, media_dir / "good.wav")
+    (media_dir / "corrupt.wav").write_bytes(b"not actually audio")
+    fake_words = _fake_words_json(tmp_path)
+    corpus_path = tmp_path / "corpus.db"
+    argv_extra = ("--workers", str(workers))
+
+    rc = main(_ingest_dir_argv(media_dir, corpus_path, fake_words, *argv_extra))
+    assert rc == 1
+    capsys.readouterr()
+
+    # Re-run unchanged: the good file (already in the corpus) is skipped, the
+    # bad one (never made it in, since it failed) is retried -- and still fails.
+    rc = main(_ingest_dir_argv(media_dir, corpus_path, fake_words, *argv_extra))
+    assert rc == 1
+    out_err = capsys.readouterr()
+    assert "Skipping 1 already-ingested file(s)" in out_err.out
+    assert "1 to process." in out_err.out
+    assert "good.wav" not in out_err.out  # not reprocessed
+    assert "FAILED" in out_err.err
+    assert "corrupt.wav" in out_err.err
+    with Corpus(corpus_path) as corpus:
+        assert corpus.stats().num_files == 1
+
+
 def test_vad_filter_defaults_to_on():
     args = build_parser().parse_args(["ingest", "ep01.mp4", "--corpus", "corpus.db"])
     backend = build_asr_backend("faster-whisper", args)
