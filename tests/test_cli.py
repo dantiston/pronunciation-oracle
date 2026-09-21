@@ -22,6 +22,15 @@ def _fake_words_json(tmp_path):
     return path
 
 
+def _fake_words_json_repeated_pikachu(tmp_path, count):
+    words = [
+        {"word": "pikachu", "start": i * 0.5, "end": i * 0.5 + 0.3, "confidence": 0.9} for i in range(count)
+    ]
+    path = tmp_path / "fake_words_repeated.json"
+    path.write_text(json.dumps(words), encoding="utf-8")
+    return path
+
+
 def test_ingest_and_search_end_to_end(tmp_path, tone_wav, capsys):
     corpus_path = tmp_path / "corpus.db"
     fake_words = _fake_words_json(tmp_path)
@@ -107,6 +116,76 @@ def test_search_phrase_end_to_end(tmp_path, tone_wav, capsys):
     # Span covers from "use"'s start to "thunderbolt"'s end.
     assert manifest[0]["word_start"] == 1.3
     assert manifest[0]["word_end"] == 2.2
+
+
+def _ingest_repeated_pikachu(tmp_path, tone_wav, corpus_path, count=5):
+    fake_words = _fake_words_json_repeated_pikachu(tmp_path, count)
+    main(
+        [
+            "ingest",
+            str(tone_wav),
+            "--corpus",
+            str(corpus_path),
+            "--asr-backend",
+            "fake",
+            "--fake-words-json",
+            str(fake_words),
+        ]
+    )
+
+
+def test_search_default_max_clips_is_3(tmp_path, tone_wav, capsys):
+    corpus_path = tmp_path / "corpus.db"
+    _ingest_repeated_pikachu(tmp_path, tone_wav, corpus_path, count=5)
+    capsys.readouterr()
+
+    out_dir = tmp_path / "clips"
+    rc = main(["search", "pikachu", "--corpus", str(corpus_path), "--out", str(out_dir)])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Found 5 instance(s)" in out
+    assert "Clipping the first 3" in out
+
+    manifest = json.loads((out_dir / "manifest.json").read_text())
+    assert len(manifest) == 3
+
+
+def test_search_max_clips_override(tmp_path, tone_wav, capsys):
+    corpus_path = tmp_path / "corpus.db"
+    _ingest_repeated_pikachu(tmp_path, tone_wav, corpus_path, count=5)
+    capsys.readouterr()
+
+    out_dir = tmp_path / "clips"
+    rc = main(["search", "pikachu", "--corpus", str(corpus_path), "--out", str(out_dir), "--max-clips", "2"])
+    assert rc == 0
+    manifest = json.loads((out_dir / "manifest.json").read_text())
+    assert len(manifest) == 2
+
+
+def test_search_max_clips_zero_means_no_cap(tmp_path, tone_wav, capsys):
+    corpus_path = tmp_path / "corpus.db"
+    _ingest_repeated_pikachu(tmp_path, tone_wav, corpus_path, count=5)
+    capsys.readouterr()
+
+    out_dir = tmp_path / "clips"
+    rc = main(["search", "pikachu", "--corpus", str(corpus_path), "--out", str(out_dir), "--max-clips", "0"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Clipping the first" not in out
+    manifest = json.loads((out_dir / "manifest.json").read_text())
+    assert len(manifest) == 5
+
+
+def test_search_max_clips_does_not_affect_plain_listing(tmp_path, tone_wav, capsys):
+    corpus_path = tmp_path / "corpus.db"
+    _ingest_repeated_pikachu(tmp_path, tone_wav, corpus_path, count=5)
+    capsys.readouterr()
+
+    rc = main(["search", "pikachu", "--corpus", str(corpus_path)])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Found 5 instance(s)" in out
+    assert out.count("pikachu") >= 5  # every hit printed, not capped to 3
 
 
 def test_search_no_matches(tmp_path, tone_wav, capsys):

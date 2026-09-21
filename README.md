@@ -115,6 +115,11 @@ defaults were checked.
 Useful flags:
 - `--contains` on `search`: substring match (e.g. `pika` also matches `pikachu`).
 - `--min-confidence`: drop low-confidence (usually interpolated) hits.
+- `--max-clips`: cap on clips actually written when `--out` is given, default
+  3 (0 or negative for no cap). Only affects clip extraction, not the reported
+  hit count or plain listing when `--out` is omitted -- `--limit` caps the
+  underlying search itself (default: no cap) if you want fewer hits considered
+  in the first place, e.g. for a faster search on a huge corpus.
 - `--format {wav,mp3,flac}`: clip output format.
 - `--model {tiny,base,small,medium,large-v3}` / `--device` / `--compute-type` /
   `--vad-filter`/`--no-vad-filter`: faster-whisper tuning. `--vad-filter` is on

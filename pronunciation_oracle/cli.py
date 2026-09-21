@@ -269,7 +269,10 @@ def cmd_search(args: argparse.Namespace) -> int:
 
     print(f"Found {len(hits)} instance(s) of '{args.word}'.")
     if args.out:
-        results = extract_clips(hits, args.out, pad=args.pad, fmt=args.format)
+        clip_hits = hits if args.max_clips <= 0 else hits[: args.max_clips]
+        if len(clip_hits) < len(hits):
+            print(f"Clipping the first {len(clip_hits)} (pass --max-clips to change, 0 for no cap).")
+        results = extract_clips(clip_hits, args.out, pad=args.pad, fmt=args.format)
         for r in results:
             print(f"  {r.output_path}  [{Path(r.source_path).name} @ {r.word_start:.2f}s]")
         print(f"Wrote {len(results)} clip(s) to {args.out} (manifest.json / manifest.csv included).")
@@ -384,7 +387,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="substring match instead of exact match (applied per word for a phrase)",
     )
     p_search.add_argument("--min-confidence", type=float, default=None)
-    p_search.add_argument("--limit", type=int, default=None)
+    p_search.add_argument(
+        "--limit", type=int, default=None, help="cap on search hits fetched (default: no cap)"
+    )
+    p_search.add_argument(
+        "--max-clips",
+        type=int,
+        default=3,
+        help="cap on how many clips to actually write when --out is given (default: 3). "
+        "Doesn't affect the hit count shown or plain listing when --out is omitted. "
+        "0 or negative means no cap -- write a clip for every hit.",
+    )
     p_search.set_defaults(func=cmd_search)
 
     p_stats = sub.add_parser("stats", help="Show corpus summary statistics")
