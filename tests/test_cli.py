@@ -243,12 +243,15 @@ def test_ingest_dir_parallel_reports_failures_and_exit_code(tmp_path, tone_wav, 
         assert corpus.stats().num_files == 1
 
 
-@pytest.mark.parametrize("flag_present", [True, False])
-def test_vad_filter_flag_threads_through_to_backend(flag_present):
-    argv = ["ingest", "ep01.mp4", "--corpus", "corpus.db"]
-    if flag_present:
-        argv.append("--vad-filter")
-    args = build_parser().parse_args(argv)
+def test_vad_filter_defaults_to_on():
+    args = build_parser().parse_args(["ingest", "ep01.mp4", "--corpus", "corpus.db"])
     backend = build_asr_backend("faster-whisper", args)
     assert isinstance(backend, FasterWhisperASR)
-    assert backend._vad_filter is flag_present
+    assert backend._vad_filter is True
+
+
+def test_no_vad_filter_flag_disables_it():
+    args = build_parser().parse_args(["ingest", "ep01.mp4", "--corpus", "corpus.db", "--no-vad-filter"])
+    backend = build_asr_backend("faster-whisper", args)
+    assert isinstance(backend, FasterWhisperASR)
+    assert backend._vad_filter is False

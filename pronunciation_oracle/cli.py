@@ -299,12 +299,13 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--compute-type", default="int8")
         p.add_argument(
             "--vad-filter",
-            action="store_true",
+            action=argparse.BooleanOptionalAction,
+            default=True,
             help="[faster-whisper] skip segments Silero VAD doesn't classify as speech before "
             "decoding (faster, drops music-only stretches like theme songs -- but on content with "
             "near-continuous background music under dialogue, it can also drop real spoken words "
             "along with the music; measured ~30%% speedup vs. ~57%% recall loss on one such case. "
-            "Off by default -- check it against your own content first)",
+            "On by default; pass --no-vad-filter to disable if that recall loss matters for your content)",
         )
         p.add_argument(
             "--language", default=None, help="force a language code, e.g. en (default: auto-detect)"
