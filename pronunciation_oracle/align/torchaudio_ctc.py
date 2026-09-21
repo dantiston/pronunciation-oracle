@@ -5,8 +5,17 @@ of interpolating around ASR anchors (see SequenceAligner), at the cost of a
 torch/torchaudio dependency and a model download. Requires the `align-ctc`
 extra: `pip install pronunciation-oracle[align-ctc]`.
 
-Not wired in as the default because it's heavy; select it explicitly via
-`--align-backend ctc` on the CLI, or `TorchaudioCTCAligner()` in code.
+Not wired in as the default because it's heavy -- and unlike swapping the ASR
+backend (see asr.mlx_whisper_backend), "heavy" isn't buying more accuracy
+here to trade against. On the same battle-scene test used throughout this
+project (weak `tiny`-model ASR anchors for SequenceAligner, forcing it to
+actually reconcile mismatched text, vs this aligner's forced alignment
+straight from text+audio, ignoring ASR entirely): SequenceAligner landed
+15/21 word timestamps within 0.5s of ground truth in ~0.00s; this aligner
+landed 14/21 in 45.5s. No accuracy edge found, and roughly 1000x slower.
+Select it explicitly via `--align-backend ctc` on the CLI, or
+`TorchaudioCTCAligner()` in code, but there's no evidence yet that you
+should prefer it over the default for content like this.
 """
 
 from __future__ import annotations

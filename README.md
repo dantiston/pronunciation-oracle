@@ -91,7 +91,14 @@ Metal), then cpu -- it's the same model and math either way, so this is a
 free speed win with no accuracy tradeoff (verified matching output on cpu vs
 mps). Note: torchaudio's forced_align op isn't implemented for MPS in current
 torch, so mps runs with a required (automatic) CPU fallback for just that one
-op; measured speedup was modest (~30-40% on a short clip), not dramatic.
+op; measured speedup was modest (~30-40% on a short clip), not dramatic. That
+auto-device-selection is about *where* `ctc` runs, not *whether* to use it --
+`--align-backend` itself stays manual (`sequence` by default) because, unlike
+the ASR backend below, checking `ctc` against `sequence` head-to-head (weak
+`tiny`-model ASR anchors, so `sequence` has to actually reconcile mismatched
+text rather than trivially match) found no accuracy edge for `ctc` (15/21 vs
+14/21 words within 0.5s of ground truth) while being ~1000x slower -- see
+`align.torchaudio_ctc` for the numbers. No reason found yet to prefer it.
 `--asr-backend mlx-whisper` (the `mlx` extra, Apple Silicon only) is a
 different story: measured 3.9x faster than faster-whisper's cpu "small" on a
 5-minute clip, but on a real recall check, it missed roughly half the actual
@@ -165,9 +172,13 @@ Every stage is behind a small interface so pieces can be swapped independently:
   interpolation never drifts into a neighboring line. Optional:
   `align.torchaudio_ctc.TorchaudioCTCAligner` (`--align-backend ctc`) does true
   CTC forced alignment via `torchaudio.pipelines.MMS_FA` directly against the
-  waveform, for higher-precision phoneme-level timing at the cost of a
+  waveform instead of interpolating around ASR anchors, at the cost of a
   torch/torchaudio dependency and model download (`pip install .[align-ctc]`).
   Runs on cuda/mps/cpu, auto-selected (`--align-device auto`, the default).
+  "True forced alignment" didn't translate into better real-world accuracy in
+  testing, though -- see GPU/MPS above -- so treat it as a different
+  mechanism to reach for in specific situations (e.g. no ASR pass available
+  at all), not a strictly-better default.
 - **`corpus.Corpus`** -- SQLite-backed word index (`files`, `words` tables,
   indexed on normalized word). `search()` takes either a single word or a
   phrase; a phrase is matched as a contiguous run of `word_index`s in one
