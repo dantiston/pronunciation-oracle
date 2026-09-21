@@ -3,7 +3,8 @@ import shutil
 
 import pytest
 
-from pronunciation_oracle.cli import main
+from pronunciation_oracle.asr.faster_whisper_backend import FasterWhisperASR
+from pronunciation_oracle.cli import build_asr_backend, build_parser, main
 from pronunciation_oracle.corpus import Corpus
 
 
@@ -240,3 +241,14 @@ def test_ingest_dir_parallel_reports_failures_and_exit_code(tmp_path, tone_wav, 
     with Corpus(corpus_path) as corpus:
         # The good file still got ingested despite the other one failing.
         assert corpus.stats().num_files == 1
+
+
+@pytest.mark.parametrize("flag_present", [True, False])
+def test_vad_filter_flag_threads_through_to_backend(flag_present):
+    argv = ["ingest", "ep01.mp4", "--corpus", "corpus.db"]
+    if flag_present:
+        argv.append("--vad-filter")
+    args = build_parser().parse_args(argv)
+    backend = build_asr_backend("faster-whisper", args)
+    assert isinstance(backend, FasterWhisperASR)
+    assert backend._vad_filter is flag_present

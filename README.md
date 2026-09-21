@@ -70,6 +70,20 @@ alongside `clips/manifest.json` and `clips/manifest.csv` listing every clip's
 source file, word-span timing, clip timing, confidence, and surrounding
 context (so you can tell which character/line each clip came from).
 
+**If you have subtitles, use a smaller/faster `--model`.** When subtitles are
+supplied, the ASR's own words are discarded in favor of the subtitle's text --
+the ASR only needs to provide rough timing anchors for the aligner to snap
+subtitle words onto (see [Architecture](#architecture--extension-points)).
+That's a much easier job than getting the words right, so a weak model can
+still do it well. Measured on real content: `--model tiny` was ~3.3x faster
+than `small` and recovered the same 21/21 instances of a repeated word once
+aligned against subtitle text, even though `tiny`'s own unaligned transcript
+was visibly worse (hallucinated words, wrong lyrics on a song). The residual
+handful of poorly-anchored words landed with `confidence=None` or very low
+confidence, exactly what `search --min-confidence` is for -- so pair a fast
+model with a confidence filter on search. Without subtitles (pure ASR path),
+`tiny`'s raw word accuracy is the whole result, so stick with `small` or larger.
+
 Useful flags:
 - `--contains` on `search`: substring match (e.g. `pika` also matches `pikachu`).
 - `--min-confidence`: drop low-confidence (usually interpolated) hits.

@@ -46,8 +46,9 @@ def build_asr_backend(name: str, args: argparse.Namespace, cpu_threads: int | No
 
     Args:
         name: "faster-whisper" or "fake".
-        args: Parsed CLI namespace; reads --model/--device/--compute-type for
-            faster-whisper, or --fake-words-json for the fake backend.
+        args: Parsed CLI namespace; reads --model/--device/--compute-type/
+            --vad-filter for faster-whisper, or --fake-words-json for the
+            fake backend.
         cpu_threads: [faster-whisper only] override ctranslate2's thread count.
             Used to divide cores evenly across --workers parallel processes
             instead of letting each one auto-detect and oversubscribe the CPU.
@@ -64,6 +65,7 @@ def build_asr_backend(name: str, args: argparse.Namespace, cpu_threads: int | No
             model_size=args.model,
             device=args.device,
             compute_type=args.compute_type,
+            vad_filter=args.vad_filter,
             **extra,
         )
     if name == "fake":
@@ -295,6 +297,15 @@ def build_parser() -> argparse.ArgumentParser:
         )
         p.add_argument("--device", default="cpu")
         p.add_argument("--compute-type", default="int8")
+        p.add_argument(
+            "--vad-filter",
+            action="store_true",
+            help="[faster-whisper] skip segments Silero VAD doesn't classify as speech before "
+            "decoding (faster, drops music-only stretches like theme songs -- but on content with "
+            "near-continuous background music under dialogue, it can also drop real spoken words "
+            "along with the music; measured ~30%% speedup vs. ~57%% recall loss on one such case. "
+            "Off by default -- check it against your own content first)",
+        )
         p.add_argument(
             "--language", default=None, help="force a language code, e.g. en (default: auto-detect)"
         )
