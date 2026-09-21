@@ -76,6 +76,13 @@ Useful flags:
 - `--format {wav,mp3,flac}`: clip output format.
 - `--model {tiny,base,small,medium,large-v3}` / `--device` / `--compute-type`: faster-whisper tuning.
 - `--align-backend {sequence,ctc}`: alignment engine (see below).
+- `ingest-dir --workers N`: transcribe N files concurrently, each in its own
+  process/model instance. Defaults to 1 (sequential) -- benchmarked on Apple
+  Silicon CPU, a single faster-whisper process already saturates the
+  machine's usable parallel compute, so raising this made a real two-episode
+  batch ~3% *slower* from process contention, not faster. May help on
+  different hardware (GPU, many-core setups where one process doesn't
+  saturate available compute); benchmark before relying on it.
 
 ## Library
 

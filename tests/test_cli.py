@@ -1,6 +1,8 @@
 import json
 import shutil
 
+import pytest
+
 from pronunciation_oracle.cli import main
 from pronunciation_oracle.corpus import Corpus
 
@@ -173,3 +175,68 @@ def test_ingest_dir(tmp_path, tone_wav, capsys):
     assert rc == 0
     with Corpus(corpus_path) as corpus:
         assert corpus.stats().num_files == 2
+
+
+@pytest.mark.parametrize("workers", [1, 3])
+def test_ingest_dir_sequential_and_parallel_agree(tmp_path, tone_wav, workers):
+    # Same batch ingested with the sequential path (--workers 1) and the
+    # parallel path (--workers 3, each worker building its own FakeASR from
+    # the same --fake-words-json) must produce an identical corpus.
+    media_dir = tmp_path / "media"
+    media_dir.mkdir()
+    for i in range(4):
+        shutil.copy(tone_wav, media_dir / f"ep{i:02d}.wav")
+    fake_words = _fake_words_json(tmp_path)
+    corpus_path = tmp_path / "corpus.db"
+
+    rc = main(
+        [
+            "ingest-dir",
+            str(media_dir),
+            "--corpus",
+            str(corpus_path),
+            "--asr-backend",
+            "fake",
+            "--fake-words-json",
+            str(fake_words),
+            "--workers",
+            str(workers),
+        ]
+    )
+    assert rc == 0
+    with Corpus(corpus_path) as corpus:
+        stats = corpus.stats()
+        assert stats.num_files == 4
+        assert stats.num_words == 16  # 4 words/file (see _fake_words_json) * 4 files
+
+
+def test_ingest_dir_parallel_reports_failures_and_exit_code(tmp_path, tone_wav, capsys):
+    media_dir = tmp_path / "media"
+    media_dir.mkdir()
+    shutil.copy(tone_wav, media_dir / "good.wav")
+    (media_dir / "corrupt.wav").write_bytes(b"not actually audio")
+    fake_words = _fake_words_json(tmp_path)
+    corpus_path = tmp_path / "corpus.db"
+
+    rc = main(
+        [
+            "ingest-dir",
+            str(media_dir),
+            "--corpus",
+            str(corpus_path),
+            "--asr-backend",
+            "fake",
+            "--fake-words-json",
+            str(fake_words),
+            "--workers",
+            "2",
+        ]
+    )
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "FAILED" in err
+    assert "corrupt.wav" in err
+    assert "1 file(s) failed to ingest" in err
+    with Corpus(corpus_path) as corpus:
+        # The good file still got ingested despite the other one failing.
+        assert corpus.stats().num_files == 1
