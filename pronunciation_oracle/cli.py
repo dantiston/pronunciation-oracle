@@ -20,7 +20,7 @@ from .align.sequence_aligner import SequenceAligner
 from .asr.base import ASRBackend
 from .asr.fake import FakeASR
 from .asr.faster_whisper_backend import FasterWhisperASR
-from .asr.mlx_whisper_backend import MlxWhisperASR
+from .asr.mlx_whisper_backend import MlxWhisperASR, mlx_available, mlx_whisper_installed
 from .clipper import extract_clips
 from .corpus import Corpus
 from .pipeline import transcribe_and_align
@@ -46,7 +46,11 @@ def build_asr_backend(name: str, args: argparse.Namespace, cpu_threads: int | No
     """Construct the ASR backend named by `--asr-backend`.
 
     Args:
-        name: "faster-whisper", "mlx-whisper", or "fake".
+        name: "auto", "faster-whisper", "mlx-whisper", or "fake". "auto"
+            resolves to "mlx-whisper" when this is Apple Silicon with the
+            `mlx` extra installed, else "faster-whisper" -- see
+            `asr.mlx_whisper_backend` for the real speed/recall tradeoff that
+            choice accepts.
         args: Parsed CLI namespace; reads --model/--device/--compute-type/
             --vad-filter for faster-whisper, --model for mlx-whisper, or
             --fake-words-json for the fake backend.
@@ -60,6 +64,8 @@ def build_asr_backend(name: str, args: argparse.Namespace, cpu_threads: int | No
     Raises:
         ValueError: If `name` isn't a recognized backend.
     """
+    if name == "auto":
+        name = "mlx-whisper" if mlx_available() and mlx_whisper_installed() else "faster-whisper"
     if name == "faster-whisper":
         extra = {"cpu_threads": cpu_threads} if cpu_threads is not None else {}
         return FasterWhisperASR(
@@ -296,7 +302,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     def add_asr_align_args(p: argparse.ArgumentParser) -> None:
         p.add_argument(
-            "--asr-backend", choices=["faster-whisper", "mlx-whisper", "fake"], default="faster-whisper"
+            "--asr-backend",
+            choices=["auto", "faster-whisper", "mlx-whisper", "fake"],
+            default="auto",
+            help="auto (default) picks mlx-whisper on Apple Silicon with the mlx extra installed, "
+            "else faster-whisper. auto trades real search recall for speed on Apple Silicon -- see "
+            "asr.mlx_whisper_backend for the measured tradeoff; pass faster-whisper to opt out",
         )
         p.add_argument("--align-backend", choices=["sequence", "ctc"], default="sequence")
         p.add_argument(

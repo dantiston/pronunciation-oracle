@@ -1,9 +1,11 @@
 import json
 import shutil
+from unittest.mock import patch
 
 import pytest
 
 from pronunciation_oracle.asr.faster_whisper_backend import FasterWhisperASR
+from pronunciation_oracle.asr.mlx_whisper_backend import MlxWhisperASR
 from pronunciation_oracle.cli import build_asr_backend, build_parser, main
 from pronunciation_oracle.corpus import Corpus
 
@@ -255,3 +257,39 @@ def test_no_vad_filter_flag_disables_it():
     backend = build_asr_backend("faster-whisper", args)
     assert isinstance(backend, FasterWhisperASR)
     assert backend._vad_filter is False
+
+
+def test_asr_backend_defaults_to_auto():
+    args = build_parser().parse_args(["ingest", "ep01.mp4", "--corpus", "corpus.db"])
+    assert args.asr_backend == "auto"
+
+
+@pytest.mark.parametrize(
+    ("available", "installed", "expected"),
+    [
+        (True, True, MlxWhisperASR),
+        (True, False, FasterWhisperASR),
+        (False, True, FasterWhisperASR),
+        (False, False, FasterWhisperASR),
+    ],
+)
+def test_auto_asr_backend_resolves_by_mlx_availability(available, installed, expected):
+    args = build_parser().parse_args(["ingest", "ep01.mp4", "--corpus", "corpus.db"])
+    with (
+        patch("pronunciation_oracle.cli.mlx_available", return_value=available),
+        patch("pronunciation_oracle.cli.mlx_whisper_installed", return_value=installed),
+    ):
+        backend = build_asr_backend("auto", args)
+    assert isinstance(backend, expected)
+
+
+def test_explicit_faster_whisper_overrides_auto_even_on_apple_silicon():
+    args = build_parser().parse_args(
+        ["ingest", "ep01.mp4", "--corpus", "corpus.db", "--asr-backend", "faster-whisper"]
+    )
+    with (
+        patch("pronunciation_oracle.cli.mlx_available", return_value=True),
+        patch("pronunciation_oracle.cli.mlx_whisper_installed", return_value=True),
+    ):
+        backend = build_asr_backend(args.asr_backend, args)
+    assert isinstance(backend, FasterWhisperASR)

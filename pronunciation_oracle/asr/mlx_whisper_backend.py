@@ -1,7 +1,10 @@
 """ASR backend using mlx-whisper (Apple's MLX framework, Metal-accelerated).
 
 Apple-Silicon-only -- MLX doesn't run on Intel Macs, Linux, or Windows.
-Requires the `mlx` extra: `pip install pronunciation-oracle[mlx]`.
+Requires the `mlx` extra: `pip install pronunciation-oracle[mlx]`. Selected
+automatically by `--asr-backend auto` (the CLI default) on a machine where
+`mlx_available()` and `mlx_whisper_installed()` are both true; explicit
+`--asr-backend faster-whisper` always overrides that.
 
 Real measured numbers on an Apple M5, "small" model, 5-minute real clip:
 3.9x faster than FasterWhisperASR's CPU int8 "small" (6.6s vs 25.9s). But a
@@ -11,14 +14,14 @@ recognized all 21 real spoken instances of a repeated proper noun,
 mlx-whisper's "small" recognized only 11 (misheard several as short
 fragments), and mlx-whisper's "medium" -- 8x slower -- did even worse (9/21).
 Bigger isn't a fix here; this looks specific to the MLX conversion/decoding,
-not model capacity. Treat this backend as an explicit, unproven-until-you-
-check-it speed trade, the same way `--model tiny` trades speed for accuracy --
-not a safe drop-in replacement for FasterWhisperASR without validating it
-against your own content the way the rest of this project's defaults were.
+not model capacity. `--asr-backend auto` accepts this recall cost as a
+knowing default (the user's explicit call after seeing these numbers); pass
+`--asr-backend faster-whisper` if that tradeoff isn't right for your content.
 """
 
 from __future__ import annotations
 
+import importlib.util
 import platform
 from pathlib import Path
 
@@ -35,8 +38,22 @@ _MODEL_REPOS = {
 
 
 def mlx_available() -> bool:
-    """Whether this machine can plausibly run mlx-whisper (Apple Silicon macOS)."""
+    """Whether this machine can plausibly run mlx-whisper (Apple Silicon macOS).
+
+    Checks the platform only, not whether the `mlx` extra is actually
+    installed -- see `mlx_whisper_installed()` for that.
+    """
     return platform.system() == "Darwin" and platform.machine() == "arm64"
+
+
+def mlx_whisper_installed() -> bool:
+    """Whether the `mlx_whisper` package is importable, without importing it.
+
+    Used by `--asr-backend auto` to fall back to FasterWhisperASR when this
+    machine is Apple Silicon but the `mlx` extra hasn't been installed,
+    rather than picking mlx-whisper and only failing once transcription runs.
+    """
+    return importlib.util.find_spec("mlx_whisper") is not None
 
 
 class MlxWhisperASR(ASRBackend):

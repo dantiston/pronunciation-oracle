@@ -97,9 +97,13 @@ different story: measured 3.9x faster than faster-whisper's cpu "small" on a
 5-minute clip, but on a real recall check, it missed roughly half the actual
 instances of a repeated word that faster-whisper's "small" caught correctly
 (misheard as short fragments) -- and mlx-whisper's "medium", 8x slower,
-did *worse*, not better, so this isn't a "just use a bigger model" fix. Not a
-safe drop-in replacement for faster-whisper without checking it against your
-own content the way this project's other defaults were checked.
+did *worse*, not better, so this isn't a "just use a bigger model" fix.
+**`--asr-backend` defaults to `auto`**, which picks `mlx-whisper` whenever
+this is Apple Silicon with the `mlx` extra installed -- that recall cost is
+accepted as the default going forward, not hidden behind an opt-in flag; pass
+`--asr-backend faster-whisper` explicitly if that tradeoff isn't right for
+your content, or if you haven't validated it the way this project's other
+defaults were checked.
 
 Useful flags:
 - `--contains` on `search`: substring match (e.g. `pika` also matches `pikachu`).
@@ -111,9 +115,12 @@ Useful flags:
   with near-continuous background music under dialogue it can also drop real
   spoken words along with the music (measured ~57% recall loss on one such
   case) -- pass `--no-vad-filter` if that's a real risk for your content.
-- `--asr-backend {faster-whisper,mlx-whisper,fake}`: ASR engine (see GPU/MPS above).
+- `--asr-backend {auto,faster-whisper,mlx-whisper,fake}`: ASR engine, `auto`
+  by default (see GPU/MPS above).
 - `--align-backend {sequence,ctc}` / `--align-device {auto,cpu,cuda,mps}`:
-  alignment engine (see below and GPU/MPS above).
+  alignment engine, `sequence` by default -- `ctc` is opt-in, unlike the ASR
+  backend, since it hasn't been checked for an accuracy regression the way
+  mlx-whisper was (see below and GPU/MPS above).
 - `ingest-dir --workers N`: transcribe N files concurrently, each in its own
   process/model instance. Defaults to 1 (sequential) -- benchmarked on Apple
   Silicon CPU, a single faster-whisper process already saturates the
@@ -142,11 +149,12 @@ extract_clips(hits, "clips/")
 Every stage is behind a small interface so pieces can be swapped independently:
 
 - **`asr.base.ASRBackend`** -- `transcribe(audio_path) -> ASRResult` (word-level
-  timestamps). Default: `FasterWhisperASR` (CTranslate2 Whisper, no torch/GPU
-  needed). `FakeASR` provides canned output for tests/offline demos
-  (`--asr-backend fake --fake-words-json words.json`). Optional:
-  `asr.mlx_whisper_backend.MlxWhisperASR` (`--asr-backend mlx-whisper`, Apple
-  Silicon only, the `mlx` extra) -- see GPU/MPS above before relying on it.
+  timestamps). `--asr-backend auto` (the CLI default) picks between the two
+  real backends: `asr.mlx_whisper_backend.MlxWhisperASR` on Apple Silicon with
+  the `mlx` extra installed, else `FasterWhisperASR` (CTranslate2 Whisper, no
+  torch/GPU needed) -- see GPU/MPS above for the real tradeoff that choice
+  accepts. `FakeASR` provides canned output for tests/offline demos
+  (`--asr-backend fake --fake-words-json words.json`).
 - **`align.base.Aligner`** -- `align(asr_words, reference_segments) -> [WordTiming]`.
   Default: `SequenceAligner`, a dependency-light forced-alignment approximation:
   it fuzzy-matches the reference text against the ASR's word sequence
